@@ -1,0 +1,10 @@
+langchain-openai
+langchain-huggingface
+langgraph
+trustcall
+python-dotenv
+typer[all]
+torch
+trasformers
+accelerate
+huggingface-hub
