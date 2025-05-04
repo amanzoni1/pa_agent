@@ -7,7 +7,7 @@ from langchain_core.messages import SystemMessage
 from langgraph.store.base import BaseStore
 from langgraph.graph import MessagesState
 from app.config import get_llm
-from app.schemas import UserProfile
+from app.schemas.schemas import UserProfile
 
 # ─── Initialize LLM & Trustcall extractor ─────────────────────────────────────
 

@@ -5,7 +5,7 @@ from langgraph.store.memory import InMemoryStore
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.store.base import BaseStore
 from app.config import get_llm
-from app.schemas import UpdateMemory
+from app.schemas.schemas import UpdateMemory
 from app.tools import TOOLS
 from app.graph.user_profile_node import update_user_profile
 
