@@ -1,0 +1,45 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments & env files
+.venv/
+venv/
+.env
+.env.*
+
+# Poetry lock (if you prefer rebuilding)
+poetry.lock
+
+# Logs & coverage
+*.log
+logs/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDE / editor
+.vscode/
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+
+# Config secrets
+config/credentials.yaml
+
+# Docker / compose overrides
+docker-compose.override.yml
+
+# Data volumes (e.g. Qdrant, Postgres mounts)
+data/
+
+# Test reports, caches
+.cache/
+
+# Temporary files
+/blueprint.md
+/plan.md
+/base.mermaid
