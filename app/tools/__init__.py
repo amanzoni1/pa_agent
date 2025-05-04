@@ -1,3 +1,5 @@
-from .search import web_search
+# app/tools/__init__.py
+from .web_search import tavily_search
+from .wiki_search import wiki_search
 
-TOOLS = [web_search]
+TOOLS = [tavily_search, wiki_search]

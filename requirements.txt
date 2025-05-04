@@ -1,10 +1,6 @@
 langchain-openai
-langchain-huggingface
+langchain-community
 langgraph
 trustcall
 python-dotenv
 typer[all]
-torch
-trasformers
-accelerate
-huggingface-hub
