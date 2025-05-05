@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph, MessagesState, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 from langgraph.store.base import BaseStore
+from langgraph.prebuilt import ToolNode
 
 from app.config import get_llm
 from app.schemas.profile_schema import UpdateProfileMemory
@@ -24,14 +25,20 @@ You are a friendly assistant.  Use whatever you already know about the user to p
 
 {profile}
 
-If you learn *new* information, choose **exactly one** action:
+If you learn *new* information, **exactly one** memory‑tool:
 
-1) Core facts → call UpdateProfileMemory(update_type="profile")
-2) One-off experience → call UpdateExperienceMemory(update_type="memories")
-3) Plan/project → call UpdateProjectMemory(update_type="projects")
-4) Otherwise do **not** call any tool.
+1. Core facts → `UpdateProfileMemory(update_type="profile")`
+2. Experience   → `UpdateExperienceMemory(update_type="memories")`
+3. Projects     → `UpdateProjectMemory(update_type="projects")`
 
-Now the conversation follows:
+For web lookups you can call:
+- `tavily_search(query, max_results=3)`
+- `wiki_search(query, max_pages=2)`
+- `web_fetch(url, max_pages=1)`
+
+Otherwise, do **not** call any tool.
+
+Now the actual conversation:
 """
 
 
@@ -53,7 +60,10 @@ def assistant_node(
     prompt = SYSTEM_PROMPT.format(profile=profile)
 
     assistant = model.bind_tools(
-        [UpdateProfileMemory, UpdateExperienceMemory, UpdateProjectMemory],
+        [UpdateProfileMemory,
+         UpdateExperienceMemory,
+         UpdateProjectMemory,
+         *TOOLS],
         parallel_tool_calls=False,
     )
 
@@ -62,45 +72,56 @@ def assistant_node(
     return {"messages": [ai_msg]}
 
 
-def route_memory(state, *_):
-    """
-    Look at the last AI message’s tool_call.  Route to the matching node.
-    """
+def route_tools(state, *_):
     last = state["messages"][-1]
     calls = getattr(last, "tool_calls", []) or []
     if not calls:
         return END
 
-    t = calls[0]["args"]["update_type"]
-    if t == "profile":
+    name = calls[0]["name"]
+    if name == "UpdateProfileMemory":
         return "update_user_profile"
-    if t == "memories":
+    if name == "UpdateExperienceMemory":
         return "update_memories"
-    if t == "projects":
+    if name == "UpdateProjectMemory":
         return "update_projects"
+    if name in [t.name for t in TOOLS]:
+        return name
     return END
 
 
 # ─── Build the StateGraph ─────────────────────────────────────────
 builder = StateGraph(MessagesState)
 
+# Core chatbot
 builder.add_node("assistant", assistant_node)
+
+# Memory update nodes
 builder.add_node("update_user_profile", update_user_profile)
 builder.add_node("update_memories", update_memories)
 builder.add_node("update_projects", update_projects)
 
+# ToolNodes for every tool in TOOLS
+for tool_fn in TOOLS:
+    node_name = tool_fn.name
+    builder.add_node(node_name, ToolNode([tool_fn]))
+
 builder.add_edge(START, "assistant")
-builder.add_conditional_edges("assistant", route_memory)
-builder.add_edge("update_user_profile", "assistant")
-builder.add_edge("update_memories", "assistant")
-builder.add_edge("update_projects", "assistant")
+builder.add_conditional_edges("assistant", route_tools)
+for node_name in [
+    "update_user_profile",
+    "update_memories",
+    "update_projects",
+    *[t.name for t in TOOLS],
+]:
+    builder.add_edge(node_name, "assistant")
 
 GRAPH = builder.compile(
     checkpointer=MemorySaver(),  # thread-local chat history
     store=InMemoryStore(),  # cross-thread long-term memory
 )
 
-# (optional) visualize your graph
+# # (optional) visualize your graph
 # with open("chatbot_graph.png", "wb") as f:
 #     f.write(GRAPH.get_graph().draw_mermaid_png())
 # print("Wrote graph to chatbot_graph.png")
