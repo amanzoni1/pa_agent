@@ -198,7 +198,7 @@ def extract_text_from_image(image_path: str) -> str:
 @tool
 def handle_pdf(
     path_or_url: str,
-    mode: Literal["single", "page"] = "single",
+    mode: Optional[Literal["single", "page"]] = None,
     pages_delimiter: str = "\n\n",
 ) -> Union[str, List[Dict[str, Any]]]:
     """
@@ -211,8 +211,17 @@ def handle_pdf(
 
     Returns:
       - If mode=='single': a single string of all text, pages separated by pages_delimiter.
-      - If mode=='page': list of { 'content': str, 'metadata': dict } for each page.
+      - If mode=='page': list of {'content': str, 'metadata': dict} for each page.
+      - If mode is None or invalid: a prompt asking the user which mode they want.
     """
+    # if the caller didn’t specify a mode, ask for clarification
+    if mode not in ("single", "page"):
+        return (
+            "❓ Please let me know how to process this PDF:\n"
+            "  • `mode='single'` to extract all text as one string,\n"
+            "  • `mode='page'` to split into page-level documents."
+        )
+
     try:
         source = path_or_url
         if source.lower().startswith(("http://", "https://")):

@@ -1,6 +1,8 @@
-langchain-openai
 langchain-core
 langchain-community
+langchain-openai
+langchain-pinecone
+langchain-google-community[gmail]
 langgraph
 trustcall
 python-dotenv
@@ -13,6 +15,11 @@ requests
 unstructured
 wikipedia
 pypdf
+# pinecone
+# pinecone-client[grpc]
+# pip install --upgrade "pinecone-client[grpc]"
+
+
 poppler
 unstructured[local-inference]
 pdfminer.six

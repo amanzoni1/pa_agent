@@ -23,3 +23,15 @@ app/
 ├── router.py # StateGraph wiring + main “assistant” node
 ├── profile_node.py # update_user_profile()
 └── episodic_node.py # update_memory(), etc.
+
+###
+
+-sub graph where to make reduction inside a node etc
+https://github.com/langchain-ai/langchain-academy/blob/main/module-4/sub-graph.ipynb
+
+####
+
+memories e project si sovrascrivono, quando data controversi sovrascive nome invece di chiedere.
+non tutti i data vengono riconosciuti, instructor puo anche chiedere conferma
+truncate or summarize current thread
+new system prompt completo per react etc, guarda anche logiche
