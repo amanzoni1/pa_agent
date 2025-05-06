@@ -88,11 +88,13 @@ def assistant_node(
     prompt = SYSTEM_PROMPT.format(profile=profile)
 
     assistant = model.bind_tools(
-        [UpdateProfileMemory,
-         UpdateExperienceMemory,
-         UpdateProjectMemory,
-         *TOOLS,
-         *RAG],
+        [
+            UpdateProfileMemory,
+            UpdateExperienceMemory,
+            UpdateProjectMemory,
+            *RAG,
+            *TOOLS,
+        ],
         parallel_tool_calls=False,
     )
 

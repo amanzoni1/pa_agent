@@ -1,66 +1,50 @@
 # app/config.py
 
-import logging
-import os
-import time
+import logging, os, time
 from functools import wraps
 from typing import Any, Callable, Type
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 import openai
-from openai import APIConnectionError, Timeout, RateLimitError
+from openai import APIConnectionError, APITimeoutError, RateLimitError
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Environment
-# ──────────────────────────────────────────────────────────────────────────────
 load_dotenv()
 
-OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
-MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
-TEMPERATURE: float = float(os.getenv("TEMPERATURE", 0.0))
 
-# Pinecone
-PINECONE_API_KEY: str | None = os.getenv("PINECONE_API_KEY")
-PINECONE_ENV: str = os.getenv("PINECONE_ENV", "us-west1-gcp")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
+RAG_MODEL = os.getenv("RAG_MODEL", "gpt-4o")
+TEMPERATURE = float(os.getenv("TEMPERATURE", 0.0))
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Logging
-# ──────────────────────────────────────────────────────────────────────────────
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_ENV = os.getenv("PINECONE_ENV", "us-east1-aws")
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Retry decorator for transient OpenAI errors
-# ──────────────────────────────────────────────────────────────────────────────
+
+# retry decorator
 ServiceUnavailableError = getattr(openai, "ServiceUnavailableError", openai.APIError)
 TRANSIENT_EXC: tuple[Type[Exception], ...] = (
     APIConnectionError,
-    Timeout,
+    APITimeoutError,
     RateLimitError,
     ServiceUnavailableError,
 )
 
-
-def retry(
-    tries: int = 4,
-    delay: float = 1.0,
-    backoff: float = 2.0,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Simple exponential‑back‑off retry decorator."""
-
+def retry(tries: int = 4, delay: float = 1.0, backoff: float = 2.0):
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args, **kwargs):
             _tries, _delay = tries, delay
-            while _tries > 0:
+            while _tries:
                 try:
                     return func(*args, **kwargs)
                 except TRANSIENT_EXC as exc:
                     _tries -= 1
-                    if _tries == 0:
-                        raise  # bubble up after final attempt
+                    if not _tries:
+                        raise
                     logger.warning(
                         "%s failed (%s). Retrying in %.1fs …",
                         func.__name__,
@@ -75,16 +59,15 @@ def retry(
     return decorator
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# LLM factory
-# ──────────────────────────────────────────────────────────────────────────────
+# LLM subclasses with built‑in retry
 class RetriableChat(ChatOpenAI):
-    @retry(tries=4, delay=1, backoff=2)
+    @retry()
     def invoke(self, *args, **kwargs):
         return super().invoke(*args, **kwargs)
 
 
-_llm = RetriableChat(
+# Chat/orchestration model
+_chat_llm = RetriableChat(
     api_key=OPENAI_API_KEY,
     model=MODEL_NAME,
     temperature=TEMPERATURE,
@@ -92,7 +75,22 @@ _llm = RetriableChat(
     max_retries=0,
 )
 
+# RAG combine‑chain model
+_rag_llm = RetriableChat(
+    api_key=OPENAI_API_KEY,
+    model=RAG_MODEL,
+    temperature=0,
+    request_timeout=60,
+    max_retries=0,
+)
 
+
+# LLM getters
 def get_llm() -> ChatOpenAI:
-    """Return the shared ChatOpenAI instance with built‑in retries."""
-    return _llm
+    """Chat / orchestration LLM (MODEL_NAME)."""
+    return _chat_llm
+
+
+def get_rag_llm() -> ChatOpenAI:
+    """High‑quality RAG LLM (RAG_MODEL)."""
+    return _rag_llm
