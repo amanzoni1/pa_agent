@@ -13,8 +13,11 @@ pillow
 pytesseract
 requests
 unstructured
+unstructured[md]
+unstructured[docx]
 wikipedia
 pypdf
+nltk
 # pinecone
 # pinecone-client[grpc]
 # pip install --upgrade "pinecone-client[grpc]"

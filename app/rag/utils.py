@@ -1,15 +1,22 @@
 # app/rag/utils.py
 
-import logging, os, time, ssl, tempfile, requests
+import logging, time, tempfile, requests
 from pathlib import Path
-from urllib.error import URLError
-from urllib.request import urlretrieve
+from urllib.parse import urlparse
+from typing import List
 
 from pinecone import Pinecone, ServerlessSpec
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import (
+    WebBaseLoader,
+    PyPDFLoader,
+    CSVLoader,
+    UnstructuredMarkdownLoader,
+    UnstructuredWordDocumentLoader,
+)
 
 from app.config import PINECONE_API_KEY, PINECONE_ENV
 
@@ -22,6 +29,108 @@ _DIM = 1536
 
 
 # helpers
+def _download_and_load(
+    url: str,
+    suffix: str,
+    loader_cls,
+    verify_ssl: bool = True,
+    **loader_kwargs,
+) -> List[Document]:
+    """
+    Stream `url` to a NamedTemporaryFile (auto‑deleted), then parse it with
+    `loader_cls`.  `suffix` must match the file‑type expected by the loader.
+    """
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
+        r = requests.get(url, timeout=30, stream=True, verify=verify_ssl)
+        r.raise_for_status()
+        for chunk in r.iter_content(chunk_size=8192):
+            tmp.write(chunk)
+        tmp.flush()  # ensure bytes on disk
+        return loader_cls(tmp.name, **loader_kwargs).load()
+
+
+def _load_remote_file(
+    url: str,
+    suffix: str,
+    loader_cls,
+    **loader_kwargs,
+) -> List[Document]:
+    """
+    Wrapper around `_download_and_load` that retries without SSL verification
+    when a certificate error is raised (common on internal sites with
+    self‑signed certs).
+    """
+    try:
+        return _download_and_load(url, suffix, loader_cls, True, **loader_kwargs)
+    except requests.exceptions.SSLError:
+        logger.warning(
+            "SSL verification failed for %s – retrying with verify=False", url
+        )
+        return _download_and_load(url, suffix, loader_cls, False, **loader_kwargs)
+
+
+def load_docs(path_or_url: str) -> list[Document]:
+    """
+    Auto‑detect and load docs from:
+      • PDF (.pdf)                   → PyPDFLoader
+      • Markdown (.md / .markdown)   → UnstructuredMarkdownLoader
+      • CSV (.csv)                   → CSVLoader   (each row = Document)
+      • HTTP/HTTPS URL or .html      → WebBaseLoader
+      • DOCX (.docx)                 → UnstructuredWordDocumentLoader
+    Handles both *remote* and *local* paths. Raises ValueError if unsupported.
+    """
+    parsed = urlparse(path_or_url)
+
+    # Remote URL
+    if parsed.scheme in ("http", "https"):
+        lower = parsed.path.lower()
+        if lower.endswith(".pdf"):
+            return _load_remote_file(path_or_url, ".pdf", PyPDFLoader)
+        if lower.endswith((".md", ".markdown")):
+            return _load_remote_file(path_or_url, ".md", UnstructuredMarkdownLoader)
+        if lower.endswith(".csv"):
+            return _load_remote_file(path_or_url, ".csv", CSVLoader)
+        if lower.endswith(".docx"):
+            return _load_remote_file(path_or_url, ".docx", UnstructuredWordDocumentLoader)
+        return WebBaseLoader(path_or_url).load()
+
+    # Local file path
+    ext = Path(path_or_url).suffix.lower()
+    if ext == ".pdf":
+        return PyPDFLoader(path_or_url).load()
+    if ext in (".md", ".markdown"):
+        return UnstructuredMarkdownLoader(path_or_url).load()
+    if ext == ".csv":
+        return CSVLoader(path_or_url).load()
+    if ext == ".html":
+        return WebBaseLoader(Path(path_or_url).as_uri()).load()
+    if ext == ".docx":
+        return UnstructuredWordDocumentLoader(path_or_url).load()
+
+    raise ValueError(f"Unsupported file type: {path_or_url}")
+
+
+def split_docs(docs: list[Document]) -> list[Document]:
+    """
+    Semantic chunking with heading + page metadata.
+    Uses RecursiveCharacterTextSplitter (natural language, 512/200).
+    """
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=512,
+        chunk_overlap=200,
+        separators=["\n\n", "\n", " ", ""],  # default NL separators
+    )
+    chunks: list[Document] = []
+    for doc in docs:
+        for chunk in splitter.split_documents([doc]):
+            heading = chunk.page_content.split("\n", 1)[0].strip()
+            chunk.metadata.update(
+                {"page": doc.metadata.get("page", 0), "heading": heading}
+            )
+            chunks.append(chunk)
+    return chunks
+
+
 def parse_env(env: str) -> tuple[str, str]:
     """Split PINECONE_ENV like 'us-east-1-aws' → ('aws', 'us-east-1')."""
     parts = env.strip().split("-")
@@ -58,54 +167,3 @@ def get_store(name: str) -> PineconeVectorStore:
         embedding=_EMBED,
         text_key="page_content",
     )
-
-
-def download_pdf(url: str) -> Path:
-    """
-    Download remote PDF to a temp file and return its path.
-    Falls back to verify=False if the first try hits an SSL error.
-    """
-    if not url.startswith(("http://", "https://")):
-        return Path(url)  # local file
-
-    fd, tmp = tempfile.mkstemp(suffix=".pdf")
-    os.close(fd)
-
-    try:
-        # normal secure path
-        urlretrieve(url, tmp)
-        return Path(tmp)
-    except URLError as err:
-        # only retry for SSL issues
-        if isinstance(err.reason, ssl.SSLCertVerificationError):
-            logger.warning(
-                "SSL verification failed for %s – retrying with verify=False", url
-            )
-            resp = requests.get(url, timeout=20, verify=False, stream=True)
-            resp.raise_for_status()
-            with open(tmp, "wb") as fh:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    fh.write(chunk)
-            return Path(tmp)
-        raise
-
-
-def split_docs(docs: list[Document]) -> list[Document]:
-    """
-    Semantic chunking with heading + page metadata.
-    Uses RecursiveCharacterTextSplitter (natural language, 512/150).
-    """
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=512,
-        chunk_overlap=150,
-        separators=["\n\n", "\n", " ", ""],  # default NL separators
-    )
-    chunks: list[Document] = []
-    for doc in docs:
-        for chunk in splitter.split_documents([doc]):
-            heading = chunk.page_content.split("\n", 1)[0].strip()
-            chunk.metadata.update(
-                {"page": doc.metadata.get("page", 0), "heading": heading}
-            )
-            chunks.append(chunk)
-    return chunks

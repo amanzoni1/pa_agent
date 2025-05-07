@@ -7,9 +7,8 @@ from langchain_core.tools import tool
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_community.document_loaders import PyPDFLoader
 
-from .utils import get_store, download_pdf, split_docs
+from .utils import load_docs, split_docs, get_store
 from app.config import get_rag_llm
 
 logger = logging.getLogger(__name__)
@@ -26,13 +25,13 @@ _COMBINE = create_stuff_documents_chain(llm=_LLM, prompt=_PROMPT)
 
 # LangGraph tools
 @tool
-def index_pdf(name: Optional[str], path_or_url: str) -> str:
+def index_docs(name: Optional[str], path_or_url: str) -> str:
     """
-    ➜ Ingest a PDF into Pinecone.
+    ➜ Ingest a PDF, Markdown, HTML, CSV or web URL into Pinecone.
 
     Args:
       name: target Pinecone index (auto‑created if needed).
-      path_or_url: local path *or* HTTP(S) URL to a PDF.
+      path_or_url: local path *or* HTTP(S) URL to a PDF, Markdown, HTML, CSV or web URL
 
     Returns:
       Success / error message.
@@ -41,27 +40,25 @@ def index_pdf(name: Optional[str], path_or_url: str) -> str:
         return "❓ Please provide a Pinecone index name."
 
     try:
-        pdf_path = download_pdf(path_or_url)
-        pages = PyPDFLoader(str(pdf_path)).load()
-        chunks = split_docs(pages)
+        docs = load_docs(path_or_url)
+        chunks = split_docs(docs)
 
         store = get_store(name)
         store.add_documents(chunks)
         return f"Indexed {len(chunks)} chunks into '{name}'."
     except Exception as exc:
-        logger.exception("index_pdf failed")
-        return f"index_pdf error: {exc}"
+        logger.exception("index_docs failed")
+        return f"index_docs error: {exc}"
 
 
 @tool
 def query_index(name: str, question: str, k: int = 20) -> str:
     """
-    ➜ Ask `question` against Pinecone index `name` using MMR retrieval.
+    ➜ Ask `question` against Pinecone index `name`.
 
     Args:
       name: Pinecone index name.
       question: natural‑language question.
-      k: number of diverse chunks to retrieve (default 10).
 
     Returns:
       Answer string (may cite context implicitly).

@@ -1,8 +1,8 @@
 # app/rag/__init__.py
 
-from app.rag.pinecone import index_pdf, query_index
+from app.rag.pinecone import index_docs, query_index
 
 RAG = [
-    index_pdf,
+    index_docs,
     query_index,
 ]
