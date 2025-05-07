@@ -17,7 +17,9 @@ unstructured[md]
 unstructured[docx]
 wikipedia
 pypdf
+python-docx
 nltk
+tabula-py
 # pinecone
 # pinecone-client[grpc]
 # pip install --upgrade "pinecone-client[grpc]"

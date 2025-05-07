@@ -1,459 +1,211 @@
 # app/tools/docs_tools.py
 
-import os, io
-import logging
 import base64
-import requests
+import logging
+import mimetypes
+import os
+import pathlib
+import shutil
 import tempfile
-from typing import Optional, List, Dict, Any, Union, Literal
+from typing import Any, Dict, List, Union
+from urllib.parse import urlparse
 
-import pandas as pd
-from PIL import Image
-import pytesseract
-
+import requests
 from langchain_core.tools import tool
-from langchain_community.document_loaders.unstructured import UnstructuredFileLoader
-from langchain_community.document_loaders import (
-    PyPDFLoader,
-    DirectoryLoader,
-    TextLoader,
-    PythonLoader,
-)
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-logger = logging.getLogger(__name__)
+from app.config import get_llm
+
+LOGGER = logging.getLogger(__name__)
+
+_LLM = get_llm()
+_CHUNKER = RecursiveCharacterTextSplitter(chunk_size=1_000, chunk_overlap=200)
 
 
-def _download_to_tempfile(url: str, suffix: str) -> str:
-    """Fetch a URL securely (verify TLS) and write to a NamedTemporaryFile, returning its path."""
-    resp = requests.get(url, verify=True, timeout=10)
+# helpers
+def _download(url: str, suffix: str | None = None) -> str:
+    """Stream *url* to a NamedTemporaryFile and return its local path."""
+    resp = requests.get(url, timeout=30, stream=True)
     resp.raise_for_status()
-    temp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    temp.write(resp.content)
-    temp.close()
-    return temp.name
+    suffix = (
+        suffix
+        or pathlib.Path(urlparse(url).path).suffix
+        or mimetypes.guess_extension(resp.headers.get("content-type", ""))
+        or ".bin"
+    )
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    for chunk in resp.iter_content(8192):
+        tmp.write(chunk)
+    tmp.flush()
+    return tmp.name
 
 
-def _load_csv_to_df(
-    path_or_url: str, delimiter: Optional[str], encoding: str
-) -> pd.DataFrame:
+def _as_local(path_or_url: str) -> str:
+    """Return a local file path for *path_or_url* (downloading if it is remote)."""
+    if path_or_url.lower().startswith(("http://", "https://")):
+        return _download(path_or_url)
+    return path_or_url
+
+
+# LangGraph tools
+@tool
+def inspect_file(path_or_url: str, head_chars: int = 500) -> Dict[str, Any]:
     """
-    Load a CSV into a pandas DataFrame, handling both URLs and local paths.
+    Quick health‑check for *any* file.
+
+    Returns path (local), byte‑size, guessed MIME type, and the first *head_chars*
+    characters (or a <binary …> placeholder for non‑text blobs).
     """
     try:
-        if path_or_url.lower().startswith(("http://", "https://")):
-            resp = requests.get(path_or_url, verify=True, timeout=10)
-            resp.raise_for_status()
-            data = io.StringIO(resp.text)
-            return pd.read_csv(data, delimiter=delimiter, encoding=encoding)
-        else:
-            return pd.read_csv(path_or_url, delimiter=delimiter, encoding=encoding)
-    except Exception as e:
-        logger.exception("Failed to load CSV %r", path_or_url)
-        raise
+        path = _as_local(path_or_url)
+        sample_bytes: bytes
+        with open(path, "rb") as fh:
+            sample_bytes = fh.read(head_chars)
+        mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        try:
+            sample = sample_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            sample = f"<binary {len(sample_bytes)} bytes>"
+        return {
+            "path": path,
+            "size_bytes": os.path.getsize(path),
+            "mime": mime,
+            "sample": sample,
+        }
+    except Exception as exc:
+        LOGGER.exception("inspect_file failed")
+        return {"error": str(exc)}
 
 
 @tool
-def decode_and_save_file(
+def summarise_file(path_or_url: str, max_tokens: int = 512) -> str:
+    """
+    LLM synopsis for small *textual* files (≤ ~15 kB recommended).
+
+    Supported extensions
+    --------------------
+    • .pdf – via ``PyPDFLoader`` (lazy import)
+    • everything else is loaded as plain UTF‑8
+
+    Notes
+    -----
+    1. The document is **not** chunked into Pinecone – this is a one‑off call.
+    2. Large files are truncated after the first ≈3×1000‑char segments.
+    """
+    path = _as_local(path_or_url)
+    ext = pathlib.Path(path).suffix.lower()
+
+    # Lazy imports to keep cold‑start fast
+    if ext == ".pdf":
+        try:
+            from langchain_community.document_loaders import PyPDFLoader  # type: ignore
+        except ImportError:
+            return "PyPDFLoader missing – run `pip install langchain-community[pdf]`."
+        text = "\n".join(d.page_content for d in PyPDFLoader(path).load())
+    else:
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except Exception as exc:
+            return f"Cannot read file: {exc}"
+
+    chunks = _CHUNKER.split_text(text)[:3]
+    prompt = (
+        "You are an assistant. Provide a concise summary of the following document for a busy user:\n\n"
+        + "\n\n".join(chunks)
+    )
+    return _LLM.invoke(prompt, max_tokens=max_tokens).content
+
+
+@tool
+def extract_tables(path_or_url: str, head_rows: int = 5) -> Union[str, List[Dict]]:
+    """
+    Preview tabular data.
+
+    • **CSV** – returns the first *head_rows* as JSON records.
+    • **PDF** – extracts every table via *tabula‑py* (Java required).
+
+    Any other extension → explanatory error message.
+    """
+    path = _as_local(path_or_url)
+    ext = pathlib.Path(path).suffix.lower()
+
+    # CSV
+    if ext == ".csv":
+        try:
+            import pandas as pd  # heavy – import only when needed
+        except ImportError:
+            return "pandas not installed – run `pip install pandas`."
+        df = pd.read_csv(path)
+        return df.head(head_rows).to_dict(orient="records")
+
+    # PDF
+    if ext == ".pdf":
+        if shutil.which("java") is None:
+            return "Java runtime not found – required by tabula‑py to parse PDF tables."
+        try:
+            import tabula  # type: ignore
+        except ImportError:
+            return "tabula‑py not installed – run `pip install tabula-py`."
+        try:
+            dfs = tabula.read_pdf(path, pages="all")
+        except Exception as exc:
+            return f"tabula error: {exc}"
+        return [df.head(head_rows).to_dict(orient="records") for df in dfs]
+
+    return "Unsupported file type for table extraction (only CSV and PDF supported)."
+
+
+@tool
+def ocr_image(image_path_or_url: str) -> str:
+    """
+    Run Tesseract OCR on an image (PNG/JPEG/WEBP) and return the extracted text.
+    """
+    path = _as_local(image_path_or_url)
+    if not path.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+        return "Unsupported image format – please provide PNG/JPEG/WEBP."
+    try:
+        from PIL import Image  # type: ignore – optional heavy dep
+        import pytesseract  # type: ignore – optional heavy dep
+    except ImportError:
+        return "pytesseract and Pillow required – run `pip install pytesseract pillow`."
+
+    try:
+        text = pytesseract.image_to_string(Image.open(path).convert("RGB"))
+        return text.strip() or "(no text recognised)"
+    except Exception as exc:
+        LOGGER.exception("ocr_image failed")
+        return f"OCR error: {exc}"
+
+
+@tool
+def save_uploaded_file(
     filename: str, content_b64: str, overwrite: bool = False
-) -> Union[str, dict]:
-    """
-    Decode a base64 blob and save it to disk, returning text or metadata.
-
-    Args:
-      filename: Local path to write.
-      content_b64: Base64‐encoded string.
-      overwrite: If False and file exists, returns an error.
-
-    Returns:
-      On success:
-        - If UTF-8 decodable: {"text": <decoded text>}
-        - Else: {"path": <filename>, "size": <bytes>}
-      On failure: {"error": <message>}
-    """
-    try:
-        if os.path.exists(filename) and not overwrite:
-            return {"error": f"File {filename} already exists."}
-
-        data = base64.b64decode(content_b64)
-    except Exception as e:
-        return {"error": f"Invalid base64: {e}"}
-
-    try:
-        os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
-        with open(filename, "wb") as f:
-            f.write(data)
-    except Exception as e:
-        logger.exception("decode_and_save_file write failed %r", filename)
-        return {"error": str(e)}
-
-    try:
-        text = data.decode("utf-8")
-        return {"text": text}
-    except UnicodeDecodeError:
-        return {"path": filename, "size_bytes": os.path.getsize(filename)}
-
-
-@tool
-def file_download(
-    url: str, dest_path: Optional[str] = None, verify_tls: bool = True
-) -> Union[str, dict]:
-    """
-    Download any URL to disk, with streaming, TLS verification, and metadata.
-
-    Args:
-      url: URL to fetch.
-      dest_path: Local path to write. If omitted, derive from URL or Content-Disposition.
-      verify_tls: Whether to verify HTTPS certificates (default True).
-
-    Returns:
-      On success: {
-        'path': <dest_path>,
-        'size_bytes': <int>,
-        'content_type': <str>
-      }
-      On failure: {"error": <message>}
-    """
-    try:
-        with requests.get(url, stream=True, verify=verify_tls, timeout=10) as resp:
-            resp.raise_for_status()
-
-            # Figure out a filename
-            if dest_path is None:
-                cd = resp.headers.get("content-disposition", "")
-                if "filename=" in cd:
-                    name = cd.split("filename=")[-1].strip("\"'")
-                else:
-                    name = os.path.basename(url.split("?", 1)[0])
-                dest_path = name or "downloaded_file"
-
-            # Sanitize & mkdir
-            dest_dir = os.path.dirname(dest_path) or "."
-            os.makedirs(dest_dir, exist_ok=True)
-            filename = os.path.basename(dest_path)
-            full_path = os.path.join(dest_dir, filename)
-
-            # Stream to disk
-            with open(full_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-
-        return {
-            "path": full_path,
-            "size_bytes": os.path.getsize(full_path),
-            "content_type": resp.headers.get("content-type", ""),
-        }
-
-    except Exception as e:
-        logger.exception("file_download failed for %r", url)
-        return {"error": str(e)}
-
-
-@tool
-def read_file(path: str) -> str:
-    """
-    Read a local text file’s contents.
-    Args:
-      path: Path to the file.
-    Returns:
-      The full file contents or an error message.
-    """
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception as e:
-        return f"Could not read {path}: {e}"
-
-
-@tool
-def extract_text_from_image(image_path: str) -> str:
-    """
-    Run OCR on an image file or URL and return the extracted text.
-
-    Args:
-      image_path: Local file path or HTTP(S) URL to an image (PNG, JPEG, etc.)
-
-    Returns:
-      The text extracted via pytesseract, or an error message.
-    """
-    try:
-        # Download remote image if needed
-        if image_path.lower().startswith(("http://", "https://")):
-            resp = requests.get(image_path, verify=True, timeout=10)
-            resp.raise_for_status()
-            img = Image.open(io.BytesIO(resp.content))
-        else:
-            img = Image.open(image_path)
-
-        # Ensure image is in a format Tesseract can handle
-        img = img.convert("RGB")
-        text = pytesseract.image_to_string(img)
-        return text.strip()
-
-    except Exception as e:
-        logger.exception("extract_text_from_image failed for %r", image_path)
-        return f"OCR error: {e}"
-
-
-@tool
-def handle_pdf(
-    path_or_url: str,
-    mode: Optional[Literal["single", "page"]] = None,
-    pages_delimiter: str = "\n\n",
-) -> Union[str, List[Dict[str, Any]]]:
-    """
-    Download and parse a PDF either as a single text flow or as page-level documents.
-
-    Args:
-      path_or_url: Local file path or HTTP(S) URL to a PDF.
-      mode: 'single' to return one concatenated text, or 'page' to return list of pages.
-      pages_delimiter: String marker between pages in 'single' mode.
-
-    Returns:
-      - If mode=='single': a single string of all text, pages separated by pages_delimiter.
-      - If mode=='page': list of {'content': str, 'metadata': dict} for each page.
-      - If mode is None or invalid: a prompt asking the user which mode they want.
-    """
-    # if the caller didn’t specify a mode, ask for clarification
-    if mode not in ("single", "page"):
-        return (
-            "❓ Please let me know how to process this PDF:\n"
-            "  • `mode='single'` to extract all text as one string,\n"
-            "  • `mode='page'` to split into page-level documents."
-        )
-
-    try:
-        source = path_or_url
-        if source.lower().startswith(("http://", "https://")):
-            source = _download_to_tempfile(source, suffix=".pdf")
-
-        loader = PyPDFLoader(source, mode=mode, pages_delimiter=pages_delimiter)
-        docs = loader.load()
-
-        if mode == "single":
-            return docs[0].page_content
-
-        return [{"content": d.page_content, "metadata": d.metadata} for d in docs]
-
-    except Exception as e:
-        logger.exception("handle_pdf failed for %r", path_or_url)
-        return f"PDF parse error: {e}"
-
-
-@tool
-def handle_csv(
-    path_or_url: str,
-    mode: Literal["inspect", "columns", "docs", "html"] = "inspect",
-    max_rows: int = 5,
-    source_column: Optional[str] = None,
-    delimiter: Optional[str] = None,
-    encoding: str = "utf-8",
-) -> Union[Dict[str, Any], List[Dict[str, Any]], str]:
-    """
-    Unified CSV handling tool using pandas.
-
-    Args:
-      path_or_url: Local file path or HTTP(S) URL to the CSV.
-      mode:        'inspect' for head+stats+schema+nulls,
-                   'columns' to list column types,
-                   'docs' for row-wise docs,
-                   'html' for HTML table string.
-      max_rows:    Number of rows for 'inspect'.
-      source_column: Column name for document 'source' metadata in 'docs' mode.
-      delimiter:   Custom CSV delimiter (e.g. ',').
-      encoding:    File encoding (default 'utf-8').
-
-    Returns:
-      - inspect: dict with 'head', 'describe', 'columns', 'null_counts'
-      - columns: dict<column, dtype>
-      - docs:    list of {'content': str, 'metadata': dict}
-      - html:    HTML table string
-    """
-    try:
-        df = _load_csv_to_df(path_or_url, delimiter, encoding)
-
-        if mode == "inspect":
-            return {
-                "head": df.head(max_rows).to_dict(orient="records"),
-                "describe": df.describe(include="all").to_dict(),
-                "columns": df.dtypes.astype(str).to_dict(),
-                "null_counts": df.isnull().sum().to_dict(),
-            }
-
-        if mode == "columns":
-            return df.dtypes.astype(str).to_dict()
-
-        if mode == "docs":
-            docs: List[Dict[str, Any]] = []
-            for idx, row in df.iterrows():
-                lines = [f"{col}: {row[col]}" for col in df.columns]
-                content = "\n".join(lines)
-                metadata: Dict[str, Any] = {"row": int(idx)}
-                if source_column and source_column in df.columns:
-                    metadata["source"] = row[source_column]
-                else:
-                    metadata["source"] = path_or_url
-                docs.append({"content": content, "metadata": metadata})
-            return docs
-
-        if mode == "html":
-            return df.to_html(index=False)
-
-        return {
-            "error": f"Unknown mode '{mode}'. Use 'inspect', 'columns', 'docs', or 'html'."
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@tool
-def excel_inspect(
-    excel_path: str,
-    sheet_name: Optional[str] = None,
-    max_rows: int = 5,
 ) -> Dict[str, Any]:
     """
-    Load an Excel file (local path or URL), pick a sheet, and return its head + summary stats.
+    Persist a client‑uploaded file *exactly as received*.
 
-    Args:
-      excel_path: Path or URL to a .xlsx/.xls file.
-      sheet_name: Name of the sheet (defaults to the first).
-      max_rows:   Number of rows in the “head” output.
+    Parameters
+    ----------
+    filename   Destination path (absolute or relative). \
+               Intermediate directories are created automatically.
 
-    Returns:
-      {
-        "sheet":    sheet_name_used,
-        "head":     [ {column: value, …}, … ],
-        "describe": { statistic: { column: value, … }, … }
-      }
-      or {"error": ...} on failure.
+    content_b64  Raw base‑64 payload from the front‑end.
+    overwrite    If ``False`` and *filename* already exists → return an error.
+
+    Returns
+    -------
+    { "path": str, "size_bytes": int } on success, or { "error": str }.
     """
     try:
-        # fetch remote if needed
-        if excel_path.lower().startswith(("http://", "https://")):
-            resp = requests.get(excel_path, verify=False, timeout=10)
-            resp.raise_for_status()
-            data = io.BytesIO(resp.content)
-            xls = pd.ExcelFile(data)
-        else:
-            xls = pd.ExcelFile(excel_path)
+        dest = pathlib.Path(filename).expanduser().resolve()
+        if dest.exists() and not overwrite:
+            return {"error": f"{dest} already exists – pass overwrite=True to replace."}
 
-        sheet = sheet_name or xls.sheet_names[0]
-        df = xls.parse(sheet)
-
-        return {
-            "sheet": sheet,
-            "head": df.head(max_rows).to_dict(orient="records"),
-            "describe": df.describe(include="all").to_dict(),
-        }
-    except Exception as e:
-        logger.exception("excel_inspect failed for %r", excel_path)
-        return {"error": str(e)}
-
-
-@tool
-def list_dir(path: str, recursive: bool = False) -> List[str]:
-    """
-    List files in a directory.
-    Args:
-      path: Directory path.
-      recursive: If True, walk subdirectories.
-    Returns:
-      A list of file paths.
-    """
-    files = []
-    if recursive:
-        for root, _, filenames in os.walk(path):
-            for fn in filenames:
-                files.append(os.path.join(root, fn))
-    else:
-        for fn in os.listdir(path):
-            files.append(os.path.join(path, fn))
-    return files
-
-
-@tool
-def handle_directory(
-    path: str,
-    pattern: str = "**/*",
-    mode: Literal['docs','snippets','text','list'] = 'docs',
-    max_files: int = 20,
-    snippet_chars: int = 500,
-    show_progress: bool = False,
-    use_multithreading: bool = False,
-    loader_cls: Optional[str] = None,
-    loader_kwargs: Optional[Dict[str, Any]] = None,
-    silent_errors: bool = False,
-) -> Union[List[Any], str, Dict[str, Any]]:
-    """
-    Unified directory loader for text-based documents.
-
-    Args:
-      path: Local directory path.
-      pattern: Glob pattern for files (e.g. "**/*.md").
-      mode: 'docs','snippets','text','list'.
-      max_files: Max docs/snippets when mode in ['docs','snippets'].
-      snippet_chars: Chars per snippet.
-      show_progress: Use tqdm progress bar.
-      use_multithreading: Enable multithreading.
-      loader_cls: One of 'UnstructuredFileLoader','TextLoader','PythonLoader'.
-      loader_kwargs: Extra kwargs for loader class.
-      silent_errors: Skip files that error.
-
-    Returns:
-      Depending on mode:
-        - list: [source_path,...]
-        - docs: [{content,metadata},...]
-        - snippets: [{source,snippet},...]
-        - text: str concatenation
-        - error: dict{error:...}
-    """
-    try:
-        cls_map = {
-            'UnstructuredFileLoader': UnstructuredFileLoader,
-            'TextLoader': TextLoader,
-            'PythonLoader': PythonLoader,
-        }
-        chosen_loader = cls_map.get(loader_cls) if loader_cls else None
-
-        loader_params = {
-            'glob': pattern,
-            'show_progress': show_progress,
-            'use_multithreading': use_multithreading,
-            'silent_errors': silent_errors,
-        }
-        if chosen_loader:
-            loader_params['loader_cls'] = chosen_loader
-        if loader_kwargs:
-            loader_params['loader_kwargs'] = loader_kwargs
-        loader = DirectoryLoader(path, **loader_params)
-        docs = loader.load()
-
-        if mode == 'list':
-            return [d.metadata.get('source', '') for d in docs]
-
-        if mode == 'docs':
-            out = []
-            for d in docs[:max_files]:
-                meta = dict(d.metadata)
-                meta['source'] = meta.get('source', '')
-                out.append({'content': d.page_content, 'metadata': meta})
-            return out
-
-        if mode == 'snippets':
-            snippets = []
-            for d in docs[:max_files]:
-                text = d.page_content.replace('', ' ')[:snippet_chars]
-                source = d.metadata.get('source', '')
-                snippets.append({'source': source, 'snippet': text})
-            return snippets
-
-        if mode == 'text':
-            return ''.join(d.page_content for d in docs)
-
-        return {'error': f"Unknown mode '{mode}'"}
-
-    except Exception as e:
-        logger.exception("handle_directory failed for %r", path)
-        return {'error': str(e)}
+        data = base64.b64decode(content_b64)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        return {"path": str(dest), "size_bytes": len(data)}
+    except Exception as exc:
+        LOGGER.exception("save_uploaded_file failed")
+        return {"error": str(exc)}
