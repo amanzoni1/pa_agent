@@ -58,7 +58,7 @@ Use what you know about the user to personalize replies:
 **Clarifications**
 - If given a PDF but no `mode`, ask:
   “Would you like `mode='single'` (all text) or `mode='page'` (page splits)?”
-- If asked to index but no `name`, ask:
+- If asked to index but no `name`, **never** guess the `name` argument, ask:
   “What Pinecone index name should I use?”
 
 **When you reply**

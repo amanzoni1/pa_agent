@@ -1,6 +1,6 @@
 # app/rag/utils.py
 
-import logging, time, tempfile, requests
+import logging, time, tempfile, requests, re
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import List
@@ -27,6 +27,10 @@ _pc = Pinecone(api_key=PINECONE_API_KEY)
 _EMBED = OpenAIEmbeddings(model="text-embedding-3-small")
 _DIM = 1536
 
+_REGION_MAP = {
+    "us-east1": "us-east-1",
+    "uswest1": "us-west-1",
+}
 
 # helpers
 def _download_and_load(
@@ -113,10 +117,10 @@ def load_docs(path_or_url: str) -> list[Document]:
 def split_docs(docs: list[Document]) -> list[Document]:
     """
     Semantic chunking with heading + page metadata.
-    Uses RecursiveCharacterTextSplitter (natural language, 512/200).
+    Uses RecursiveCharacterTextSplitter (natural language, 1000/200).
     """
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=512,
+        chunk_size=1000,
         chunk_overlap=200,
         separators=["\n\n", "\n", " ", ""],  # default NL separators
     )
@@ -131,22 +135,35 @@ def split_docs(docs: list[Document]) -> list[Document]:
     return chunks
 
 
-def parse_env(env: str) -> tuple[str, str]:
-    """Split PINECONE_ENV like 'us-east-1-aws' → ('aws', 'us-east-1')."""
-    parts = env.strip().split("-")
+def _parse_env(env: str) -> tuple[str, str]:
+    """
+    Accept forms like 'aws-us-east-1', 'us-east-1-aws', 'us-east1-gcp'…
+    Returns (cloud, region) with Pinecone's exact region spelling.
+    """
+    parts = env.lower().strip().split("-")
     if parts[-1] in ("aws", "gcp", "azure"):
-        return parts[-1], "-".join(parts[:-1])
-    if parts[0] in ("aws", "gcp", "azure"):
-        return parts[0], "-".join(parts[1:])
-    raise ValueError(f"Invalid PINECONE_ENV: {env!r}")
+        cloud, region = parts[-1], "-".join(parts[:-1])
+    elif parts[0] in ("aws", "gcp", "azure"):
+        cloud, region = parts[0], "-".join(parts[1:])
+    else:
+        raise ValueError(f"Invalid PINECONE_ENV={env!r}")
+
+    # normalise implicit region spellings
+    region = _REGION_MAP.get(region, region)
+    return cloud, region
 
 
-def ensure_index(name: str) -> None:
+def _sanitize(name: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9-]+", "-", name.lower())
+    return re.sub(r"-{2,}", "-", cleaned).strip("-")
+
+
+def _ensure_index(name: str) -> None:
     """Create `name` index if it doesn’t exist yet (serverless)."""
     if name in (idx["name"] for idx in _pc.list_indexes()):
         return
 
-    cloud, region = parse_env(PINECONE_ENV)
+    cloud, region = _parse_env(PINECONE_ENV)
     logger.info("Creating Pinecone index %s on %s/%s …", name, cloud, region)
     _pc.create_index(
         name=name,
@@ -154,14 +171,23 @@ def ensure_index(name: str) -> None:
         metric="cosine",
         spec=ServerlessSpec(cloud=cloud, region=region),
     )
-    while not _pc.describe_index(name).status["ready"]:
-        time.sleep(1)
+
+    try:
+        while not _pc.describe_index(name).status["ready"]:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.warning(
+            "Interrupted while waiting for index %s; it may finish in the background.",
+            name,
+        )
+        raise
+
     logger.info("Index %s ready", name)
 
 
 def get_store(name: str) -> PineconeVectorStore:
-    name = name.lower()
-    ensure_index(name)
+    name = _sanitize(name)
+    _ensure_index(name)
     return PineconeVectorStore(
         index=_pc.Index(name),
         embedding=_EMBED,

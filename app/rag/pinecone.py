@@ -30,11 +30,11 @@ def index_docs(name: Optional[str], path_or_url: str) -> str:
     ➜ Ingest a PDF, Markdown, HTML, CSV or web URL into Pinecone.
 
     Args:
-      name: target Pinecone index (auto‑created if needed).
-      path_or_url: local path *or* HTTP(S) URL to a PDF, Markdown, HTML, CSV or web URL
+        name : REQUIRED. The exact Pinecone index name to use.
+        path_or_url : Local path or HTTP(S) URL (pdf, md, csv, html, docx).
 
     Returns:
-      Success / error message.
+        Success / error message.
     """
     if not name:
         return "❓ Please provide a Pinecone index name."
@@ -45,6 +45,9 @@ def index_docs(name: Optional[str], path_or_url: str) -> str:
 
         store = get_store(name)
         store.add_documents(chunks)
+
+        logger.info("Indexed %s chunks into '%s'", len(chunks), name)
+
         return f"Indexed {len(chunks)} chunks into '{name}'."
     except Exception as exc:
         logger.exception("index_docs failed")
