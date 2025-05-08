@@ -9,7 +9,7 @@ from .docs_tools import (
     ocr_image,
     save_uploaded_file,
 )
-from .finance_tools import yf_latest_price, yf_news
+from .finance_tools import get_stock_quote, get_stock_news
 
 TOOLS = [
     tavily_search,
@@ -20,6 +20,6 @@ TOOLS = [
     extract_tables,
     ocr_image,
     save_uploaded_file,
-    yf_latest_price,
-    yf_news,
+    get_stock_quote,
+    get_stock_news,
 ]
