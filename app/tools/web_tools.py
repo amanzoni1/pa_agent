@@ -1,6 +1,5 @@
 # app/tools/web_tools.py
 
-import os
 import logging
 from typing import List, Dict, Any
 
@@ -8,12 +7,14 @@ from langchain_core.tools import tool
 from langchain_community.tools import TavilySearchResults
 from langchain_community.document_loaders import WebBaseLoader
 
+from app.config import TAVILY_API_KEY
+
 
 logger = logging.getLogger(__name__)
 
 # instantiate once at module load
 _TAVILY = TavilySearchResults(
-    api_key=os.environ["TAVILY_API_KEY"],
+    api_key=TAVILY_API_KEY,
     max_results=5,
     search_depth="advanced",
     include_content=True,

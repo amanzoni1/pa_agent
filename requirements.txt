@@ -2,7 +2,7 @@ langchain-core
 langchain-community
 langchain-openai
 langchain-pinecone
-langchain-google-community[gmail]
+langchain-community[github]
 langgraph
 trustcall
 python-dotenv
@@ -20,6 +20,8 @@ pypdf
 python-docx
 nltk
 tabula-py
+pygithub
+yfinance
 # pinecone
 # pinecone-client[grpc]
 # pip install --upgrade "pinecone-client[grpc]"

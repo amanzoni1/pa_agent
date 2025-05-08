@@ -2,7 +2,6 @@
 
 from .web_tools import web_fetch, tavily_search
 from .wiki_search import wiki_search
-
 from .docs_tools import (
     inspect_file,
     summarise_file,
@@ -10,6 +9,7 @@ from .docs_tools import (
     ocr_image,
     save_uploaded_file,
 )
+from .finance_tools import yf_latest_price, yf_news
 
 TOOLS = [
     tavily_search,
@@ -20,4 +20,6 @@ TOOLS = [
     extract_tables,
     ocr_image,
     save_uploaded_file,
+    yf_latest_price,
+    yf_news,
 ]

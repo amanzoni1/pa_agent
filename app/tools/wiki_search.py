@@ -5,8 +5,9 @@ from typing import List, Dict, Optional
 
 from langchain_core.tools import tool
 from langchain_community.document_loaders import WikipediaLoader
+from langchain_core.messages import SystemMessage
+
 from app.config import get_llm
-from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
 _model = get_llm()

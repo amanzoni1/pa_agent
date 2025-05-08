@@ -1,8 +1,8 @@
 # app/config.py
 
 import logging, os, time
-from functools import wraps
 from typing import Any, Callable, Type
+from functools import wraps
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -19,6 +19,8 @@ TEMPERATURE = float(os.getenv("TEMPERATURE", 0.0))
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENV = os.getenv("PINECONE_ENV", "us-east1-aws")
+
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
