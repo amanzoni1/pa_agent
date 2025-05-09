@@ -29,6 +29,10 @@ Personalise your answers using the data below:
 {instructions}
 
 ──────────────── General tools ────────────────
+  RAG / Pinecone workflow
+      – index_docs(name, path_or_url)          # supports PDF, MD, CSV, DOCX, HTML, URL
+      – query_index(name, question, k=20)
+
   Web search / scrape
     – tavily_search(query, max_results=3)
     – wiki_search(query, max_pages=2, summarize=True|False)
@@ -42,10 +46,6 @@ Personalise your answers using the data below:
 
   File I/O
     – save_uploaded_file(filename, content_b64, overwrite=False)
-
-  RAG / Pinecone workflow
-    – index_docs(name, path_or_url)          # supports PDF, MD, CSV, DOCX, HTML, URL
-    – query_index(name, question, k=20)
 
 ──────────────── Memory tools ────────────────
   • Core profile           →  UpdateProfileMemory(update_type="profile")

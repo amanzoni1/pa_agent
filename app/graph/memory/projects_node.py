@@ -53,7 +53,7 @@ def update_projects(
         "Generate a JSON object that conforms exactly to the schema,\n"
         "with a concise `title` and a clear `description`.  \n"
         'Set `due_date` to null and `status` to "planned".\n'
-        "Return *only* the JSON object."
+        "Return ONLY the raw JSON document — absolutely no code fences, no markdown, no commentary."
     )
     system_msg = SystemMessage(content=system_prompt)
 

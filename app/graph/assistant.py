@@ -3,13 +3,15 @@
 import json
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables.config import RunnableConfig
-from langgraph.graph import StateGraph, MessagesState, START, END
+from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 from langgraph.store.base import BaseStore
 from langgraph.prebuilt import ToolNode
 
 from app.config import get_llm
+from app.graph.state import ChatState
+from app.graph.memory.short_term_memory import summarize_node
 from app.schemas.profile_schema import UpdateProfileMemory
 from app.schemas.instructions_schema import UpdateInstructionMemory
 from app.schemas.project_schema import UpdateProjectMemory
@@ -23,7 +25,7 @@ model = get_llm()
 
 
 def assistant_node(
-    state: MessagesState,
+    state: ChatState,
     config: RunnableConfig,
     store: BaseStore,
 ):
@@ -35,15 +37,13 @@ def assistant_node(
     """
     uid = config["configurable"]["user_id"]
 
-    # Load profile
+    # Load Long-term memories
     prof_entry = store.get(("profile", uid), "user_profile")
     profile = prof_entry.value if prof_entry and prof_entry.value else {}
 
-    # Load memories list
     inst_entries = store.search(("instructions", uid))
     instructions = [i.value for i in inst_entries]
 
-    # Load projects list
     proj_entries = store.search(("projects", uid))
     projects = [p.value for p in proj_entries]
 
@@ -54,6 +54,17 @@ def assistant_node(
         projects=json.dumps(projects, indent=2),
     )
 
+    # Build the system message with prompt ans summarized history
+    system_messages = [SystemMessage(content=prompt)]
+
+    if state["summary"]:
+        system_messages.append(
+            SystemMessage(
+                content=f"Previous conversation (summarized):\n{state['summary']}"
+            )
+        )
+
+    # Give the tools to the Agent
     assistant = model.bind_tools(
         [
             *RAG,
@@ -65,12 +76,16 @@ def assistant_node(
         parallel_tool_calls=False,
     )
 
-    ai_msg = assistant.invoke([SystemMessage(content=prompt)] + state["messages"])
-    ###
-    print("TOOL CALLS:", ai_msg.tool_calls)
-    ###
+    # Invoke the Agent with the system message and recent messages
+    ai_msg = assistant.invoke(system_messages + state["messages"])
+
+    # print("TOOL CALLS :", ai_msg.tool_calls)
     return {"messages": [ai_msg]}
 
+
+# Routing
+def route_summarize(state, *_):
+    return "summarize_conversation" if len(state["messages"]) > 10 else "assistant"
 
 def route_tools(state, *_):
     last = state["messages"][-1]
@@ -91,10 +106,11 @@ def route_tools(state, *_):
 
 
 # ─── Build the StateGraph ─────────────────────────────────────────
-builder = StateGraph(MessagesState)
+builder = StateGraph(ChatState)
 
 # Core chatbot
 builder.add_node("assistant", assistant_node)
+builder.add_node("summarize_conversation", summarize_node)
 
 # ToolNodes for every tool in TOOLS and RAG
 for tool_fn in RAG:
@@ -110,7 +126,9 @@ for tool_fn in MEMORY:
     builder.add_node(node_name, tool_fn)
 
 # Edges
-builder.add_edge(START, "assistant")
+builder.add_conditional_edges(START, route_summarize)
+builder.add_edge("summarize_conversation", "assistant")
+
 builder.add_conditional_edges("assistant", route_tools)
 for node_name in [
     *[t.name for t in RAG],

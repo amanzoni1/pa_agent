@@ -1,6 +1,7 @@
 # app/run.py
 
-import uuid, typer
+import uuid
+import typer
 from langchain_core.messages import HumanMessage
 from langgraph.store.memory import InMemoryStore
 from app.graph.assistant import GRAPH
@@ -25,7 +26,7 @@ def chat(
 ):
     """
     Start an interactive chat loop.
-    Type /memory to see your saved profile, memories, projects, and instructions.
+    Type /memory to see your saved profile, projects, and instructions.
     Type /exit or Ctrl-D to quit.
     """
     if thread_id is None:
@@ -36,13 +37,14 @@ def chat(
         fg=typer.colors.GREEN,
     )
 
-    # your chat history
+    # 1) Chat history and running summary
     history: list[HumanMessage] = []
+    summary: str = ""
 
-    # config for Graph
+    # 2) Graph config
     cfg = {"configurable": {"user_id": user_id, "thread_id": thread_id}}
 
-    # reuse the same store the graph was compiled with, if any
+    # 3) Shared store for long-term memory
     store = getattr(GRAPH, "store", InMemoryStore())
 
     while True:
@@ -52,18 +54,17 @@ def chat(
             typer.secho("\nGoodbye!", fg=typer.colors.RED)
             raise typer.Exit()
 
-        cmd = text.strip().lower()
-        if cmd in ("/exit", "/quit"):
+        lower = text.strip().lower()
+        if lower in ("/exit", "/quit"):
             raise typer.Exit()
 
-        if cmd == "/memory":
-            # profile
+        if lower == "/memory":
+            # PROFILE
             entry = store.get(("profile", user_id), "user_profile")
             typer.secho("=== PROFILE ===", fg=typer.colors.BLUE)
-            profile = entry.value if entry else {}
-            typer.echo(profile or "{}")
+            typer.echo(entry.value if entry and entry.value else "{}")
 
-            # projects
+            # PROJECTS
             projs = store.search(("projects", user_id))
             typer.secho("=== PROJECTS ===", fg=typer.colors.BLUE)
             for p in projs:
@@ -71,9 +72,9 @@ def chat(
                 typer.echo(
                     f"- {v['title']} (status: {v.get('status')}, due: {v.get('due_date')})\n"
                     f"    {v.get('description', '')}"
-            )
+                )
 
-            # Instructions
+            # INSTRUCTIONS
             insts = store.search(("instructions", user_id))
             typer.secho("=== INSTRUCTIONS ===", fg=typer.colors.BLUE)
             for inst in insts:
@@ -82,17 +83,25 @@ def chat(
             typer.secho("=====================\n", fg=typer.colors.BLUE)
             continue
 
-        # 1) add user message
+        # ─── User said something new ────────────────────────────────────────
         history.append(HumanMessage(content=text))
 
-        # 2) run through the graph
-        result = GRAPH.invoke({"messages": history}, cfg)
-        ai = result["messages"][-1]
+        # ─── Invoke the graph, passing current history + last summary ───────
+        payload = {
+            "messages": history,
+            "summary": summary,
+        }
 
-        # 3) print AI reply
+        result = GRAPH.invoke(payload, cfg)
+
+        # ─── Pull updated summary back out (unchanged if no summarization ran)
+        summary = result.get("summary", summary)
+
+        # ─── Grab and display the assistant’s reply ─────────────────────────
+        ai = result["messages"][-1]
         typer.secho(f"AI: {ai.content}\n", fg=typer.colors.CYAN)
 
-        # 4) append for next turn
+        # ─── Append for next turn ───────────────────────────────────────────
         history.append(ai)
 
 

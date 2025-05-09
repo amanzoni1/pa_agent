@@ -46,7 +46,7 @@ def update_instructions(
         "Summarise it as a single actionable sentence; do not quote the user verbatim.\n"
         "Here is the JSON schema for an Instruction object:\n" + schema_str + "\n\n"
         f'User said: "{user_msg.content}"\n\n'
-        "Return only the JSON object."
+        "Return ONLY the raw JSON document — absolutely no code fences, no markdown, no commentary."
     )
     system_msg = SystemMessage(content=prompt)
 
