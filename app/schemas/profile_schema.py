@@ -13,4 +13,3 @@ class Profile(BaseModel):
     location: Optional[str] = None
     job: Optional[str] = None
     passions: list[str] = Field(default_factory=list)
-    goals: list[str] = Field(default_factory=list)

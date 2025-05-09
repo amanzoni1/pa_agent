@@ -58,21 +58,26 @@ def chat(
 
         if cmd == "/memory":
             # profile
-            prof = store.get(("profile", user_id), "user_profile")
+            entry = store.get(("profile", user_id), "user_profile")
             typer.secho("=== PROFILE ===", fg=typer.colors.BLUE)
-            typer.echo(prof.value or "{}")
-
-            # experiences
-            exps = store.search(("memories", user_id))
-            typer.secho("=== MEMORIES ===", fg=typer.colors.BLUE)
-            for m in exps:
-                typer.echo(f"- {m.value['content']}")
+            profile = entry.value if entry else {}
+            typer.echo(profile or "{}")
 
             # projects
             projs = store.search(("projects", user_id))
             typer.secho("=== PROJECTS ===", fg=typer.colors.BLUE)
             for p in projs:
-                typer.echo(f"- {p.value['title']}: {p.value['description']}")
+                v = p.value
+                typer.echo(
+                    f"- {v['title']} (status: {v.get('status')}, due: {v.get('due_date')})\n"
+                    f"    {v.get('description', '')}"
+            )
+
+            # Instructions
+            insts = store.search(("instructions", user_id))
+            typer.secho("=== INSTRUCTIONS ===", fg=typer.colors.BLUE)
+            for inst in insts:
+                typer.echo(f"- {inst.value['content']}")
 
             typer.secho("=====================\n", fg=typer.colors.BLUE)
             continue

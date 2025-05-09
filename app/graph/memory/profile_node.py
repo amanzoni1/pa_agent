@@ -54,7 +54,7 @@ def update_user_profile(
         "Here is the current JSON:\n"
         f"{json.dumps(existing_profile, indent=2)}\n\n"
         f"User just said: “{user_message.content}”\n\n"
-        "Update only `name`, `location`, `job`, `passions` or `goals` if new facts.\n"
+        "Update only `name`, `location`, `job` or `passions` if new facts.\n"
         "Return *only* the complete JSON document."
     )
     system_msg = SystemMessage(content=system_prompt)

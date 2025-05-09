@@ -1,6 +1,7 @@
 # app/graph/projects_node.py
 
 import json
+import uuid
 import logging
 from datetime import datetime
 
@@ -76,8 +77,9 @@ def update_projects(
         }
 
     # 4) Persist the project
-    store.put(namespace, None, project_data)
-    logger.debug("Stored new project for %r: %r", user_id, project_data)
+    new_key = uuid.uuid4().hex
+    store.put(namespace, new_key, project_data)
+    logger.debug("Stored project %r for %s", new_key, user_id)
 
     # 5) Acknowledge the original UpdateMemory call
     tool_call = state["messages"][-1].tool_calls[0]
