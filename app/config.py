@@ -11,6 +11,11 @@ from openai import APIConnectionError, APITimeoutError, RateLimitError
 
 load_dotenv()
 
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+POSTGRES_URL = os.getenv(
+    "POSTGRES_URL",
+    "postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable",
+)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-3.5-turbo")

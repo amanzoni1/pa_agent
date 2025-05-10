@@ -54,4 +54,6 @@ def summarize_node(
     # Delete all but the 2 most recent messages
     deletes = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
 
+    # print("summary", new_summary)
+
     return {"summary": new_summary, "messages": deletes}

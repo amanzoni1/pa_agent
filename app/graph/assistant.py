@@ -4,11 +4,14 @@ import json
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.memory import MemorySaver
+# from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.redis import RedisSaver
 from langgraph.store.memory import InMemoryStore
+# from langgraph.store.postgres import PostgresStore
 from langgraph.store.base import BaseStore
 from langgraph.prebuilt import ToolNode
 
+from app.config import REDIS_URL, POSTGRES_URL
 from app.config import get_llm
 from app.graph.state import ChatState
 from app.graph.memory.short_term_memory import summarize_node
@@ -139,8 +142,22 @@ for node_name in [
 ]:
     builder.add_edge(node_name, "assistant")
 
+# with RedisSaver.from_conn_string(REDIS_URL) as checkpointer:
+#     checkpointer.setup()
+
+#     GRAPH = builder.compile(
+#         checkpointer=checkpointer,
+#         store=InMemoryStore(),
+#     )
+
+_raw = RedisSaver.from_conn_string(REDIS_URL)
+checkpointer = _raw.__enter__()
+checkpointer.setup()
+
+
+
 GRAPH = builder.compile(
-    checkpointer=MemorySaver(),
+    checkpointer=checkpointer,
     store=InMemoryStore(),
 )
 
