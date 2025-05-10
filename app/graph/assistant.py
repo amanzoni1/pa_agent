@@ -4,10 +4,8 @@ import json
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph import StateGraph, START, END
-# from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.redis import RedisSaver
-from langgraph.store.memory import InMemoryStore
-# from langgraph.store.postgres import PostgresStore
+from langgraph.store.postgres import PostgresStore
 from langgraph.store.base import BaseStore
 from langgraph.prebuilt import ToolNode
 
@@ -26,7 +24,7 @@ from app.rag import RAG
 
 model = get_llm()
 
-
+# Main Agent node
 def assistant_node(
     state: ChatState,
     config: RunnableConfig,
@@ -108,7 +106,7 @@ def route_tools(state, *_):
     return END
 
 
-# ─── Build the StateGraph ─────────────────────────────────────────
+# Build the StateGraph
 builder = StateGraph(ChatState)
 
 # Core chatbot
@@ -142,24 +140,22 @@ for node_name in [
 ]:
     builder.add_edge(node_name, "assistant")
 
-# with RedisSaver.from_conn_string(REDIS_URL) as checkpointer:
-#     checkpointer.setup()
+# Redis checkpointer
+_raw_redis = RedisSaver.from_conn_string(REDIS_URL)
+redis_cp = _raw_redis.__enter__()
+redis_cp.setup()
 
-#     GRAPH = builder.compile(
-#         checkpointer=checkpointer,
-#         store=InMemoryStore(),
-#     )
-
-_raw = RedisSaver.from_conn_string(REDIS_URL)
-checkpointer = _raw.__enter__()
-checkpointer.setup()
-
+# Postgres store
+_raw_pg = PostgresStore.from_conn_string(POSTGRES_URL)
+pg_store = _raw_pg.__enter__()
+pg_store.setup()
 
 
 GRAPH = builder.compile(
-    checkpointer=checkpointer,
-    store=InMemoryStore(),
+    checkpointer=redis_cp,
+    store=pg_store,
 )
+
 
 # Visualize your graph
 # with open("chatbot_graph.png", "wb") as f:
