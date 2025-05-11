@@ -1,0 +1,51 @@
+services:
+  langgraph-redis:
+    image: redis/redis-stack-server:latest
+    container_name: pa-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 1s
+      retries: 5
+
+  langgraph-postgres:
+    image: postgres:16
+    container_name: pa-postgres
+    environment:
+      POSTGRES_DB: personal_assistant
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 1s
+      retries: 5
+
+  langgraph-api:
+    image: my-assistant
+    container_name: pa-api
+    ports:
+      - "8123:8000"
+    depends_on:
+      langgraph-redis:
+        condition: service_healthy
+      langgraph-postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      REDIS_URI: redis://langgraph-redis:6379
+      POSTGRES_URI: postgresql://postgres:postgres@langgraph-postgres:5432/personal_assistant?sslmode=disable
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      PINECONE_API_KEY: ${PINECONE_API_KEY}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
+
+volumes:
+  pgdata:

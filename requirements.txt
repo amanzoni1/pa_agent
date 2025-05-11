@@ -1,32 +1,49 @@
-langchain-core
-langchain-community
-langchain-openai
-langchain-pinecone
-langchain-community[github]
-langgraph
-trustcall
-python-dotenv
+# CLI & config
 typer[all]
-beautifulsoup4
+python-dotenv
+trustcall
+
+# Core LLM / LangChain pieces
+langchain
+langchain-core
+langchain-openai
+langgraph
+
+# Vector store & RAG
+pinecone-client
+langchain-pinecone
+langchain-community
+
+# Text splitting
+langchain-text-splitters
+nltk
+
+# OpenAI API
+openai
+
+# Redis + Postgres drivers
+redis
+psycopg2-binary
+langgraph-checkpoint-redis
+langgraph-checkpoint-postgres
+
+# HTTP, data validation, finance
+requests
+pydantic
+yfinance
+
+# Optional file-tools / OCR / PDF tables
 pandas
 pillow
 pytesseract
-requests
+tabula-py
+
+# Document & NLP support
 unstructured
 unstructured[md]
 unstructured[docx]
-wikipedia
 pypdf
-python-docx
-nltk
-tabula-py
-pygithub
-yfinance
-# pinecone
-# pinecone-client[grpc]
-# pip install --upgrade "pinecone-client[grpc]"
-
-
-poppler
-unstructured[local-inference]
 pdfminer.six
+python-docx
+beautifulsoup4
+wikipedia

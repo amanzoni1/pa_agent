@@ -9,7 +9,7 @@ from langgraph.store.postgres import PostgresStore
 from langgraph.store.base import BaseStore
 from langgraph.prebuilt import ToolNode
 
-from app.config import REDIS_URL, POSTGRES_URL
+from app.config import REDIS_URI, POSTGRES_URI
 from app.config import get_llm
 from app.graph.state import ChatState
 from app.graph.memory.short_term_memory import summarize_node
@@ -141,12 +141,12 @@ for node_name in [
     builder.add_edge(node_name, "assistant")
 
 # Redis checkpointer
-_raw_redis = RedisSaver.from_conn_string(REDIS_URL)
+_raw_redis = RedisSaver.from_conn_string(REDIS_URI)
 redis_cp = _raw_redis.__enter__()
 redis_cp.setup()
 
 # Postgres store
-_raw_pg = PostgresStore.from_conn_string(POSTGRES_URL)
+_raw_pg = PostgresStore.from_conn_string(POSTGRES_URI)
 pg_store = _raw_pg.__enter__()
 pg_store.setup()
 

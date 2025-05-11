@@ -1,0 +1,12 @@
+{
+    "dockerfile_lines": [
+        "RUN pip install nltk certifi",
+        "COPY scripts/bootstrap_nltk.py /scripts/bootstrap_nltk.py",
+        "RUN python /scripts/bootstrap_nltk.py"
+    ],
+    "graphs": {
+      "my-assistant": "./app/graph/assistant.py:graph"
+    },
+    "python_version": "3.11",
+    "dependencies": ["."]
+  }

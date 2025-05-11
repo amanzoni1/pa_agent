@@ -11,9 +11,9 @@ from openai import APIConnectionError, APITimeoutError, RateLimitError
 
 load_dotenv()
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-POSTGRES_URL = os.getenv(
-    "POSTGRES_URL",
+REDIS_URI = os.getenv("REDIS_URI", "redis://localhost:6379")
+POSTGRES_URI = os.getenv(
+    "POSTGRES_URI",
     "postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable",
 )
 
