@@ -58,10 +58,10 @@ def assistant_node(
     # Build the system message with prompt ans summarized history
     system_messages = [SystemMessage(content=prompt)]
 
-    if state["summary"]:
+    if state.get("summary"):
         system_messages.append(
             SystemMessage(
-                content=f"Previous conversation (summarized):\n{state['summary']}"
+                content=f"Previous conversation (summarized):\n{state.get('summary')}"
             )
         )
 
@@ -81,7 +81,9 @@ def assistant_node(
     ai_msg = assistant.invoke(system_messages + state["messages"])
 
     # print("TOOL CALLS :", ai_msg.tool_calls)
-    return {"messages": [ai_msg]}
+    msg = ai_msg.model_dump(mode="json")
+
+    return {"messages": [msg]}
 
 
 # Routing

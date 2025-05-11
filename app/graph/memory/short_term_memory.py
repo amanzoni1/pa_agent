@@ -22,7 +22,7 @@ def summarize_node(
     Summarize older chat turns into a rolling summary and prune them.
     """
     # Load old summary
-    old_summary = state["summary"] or ""
+    old_summary = state.get("summary", "")
 
     # Create the prompt
     if old_summary:

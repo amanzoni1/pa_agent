@@ -2,8 +2,6 @@ services:
   langgraph-redis:
     image: redis/redis-stack-server:latest
     container_name: pa-redis
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -17,8 +15,6 @@ services:
       POSTGRES_DB: personal_assistant
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

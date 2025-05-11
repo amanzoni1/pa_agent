@@ -5,7 +5,7 @@
         "RUN python /scripts/bootstrap_nltk.py"
     ],
     "graphs": {
-      "my-assistant": "./app/graph/assistant.py:graph"
+      "my-assistant": "./app/graph/assistant.py:GRAPH"
     },
     "python_version": "3.11",
     "dependencies": ["."]
