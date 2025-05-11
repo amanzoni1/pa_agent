@@ -87,7 +87,7 @@ personal_assistant/
 
 5. Ensure Redis and Postgres are running locally.
 
-### Docker Compose Deployment
+## Docker Compose Deployment
 
 1. Build your LangGraph image:
 
