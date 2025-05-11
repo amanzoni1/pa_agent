@@ -49,7 +49,7 @@ personal_assistant/
 - Python 3.11+
 - Docker & Docker Compose (for containerized deployment)
 - Redis & PostgreSQL (local or via Docker)
-- Pinecone and Tavily account & API key
+- OpenAI, Pinecone & Tavily API keys
 
 ## Getting Started
 
@@ -87,6 +87,19 @@ personal_assistant/
 
 5. Ensure Redis and Postgres are running locally.
 
+## Command-Line Interface (CLI)
+
+Interact via chat in terminal:
+
+```bash
+python -m app.run --thread-id <optional-uuid> --user-id <optional-your_id>
+```
+
+Commands:
+
+- `/memory`: Show long-term memory (profile, projects, instructions) stored.
+- `/exit` or Ctrl-D: Quit.
+
 ## Docker Compose Deployment
 
 1. Build your LangGraph image:
@@ -106,20 +119,7 @@ personal_assistant/
    - API: `http://localhost:8123`
    - Swagger Docs: `http://localhost:8123/docs`
 
-## Command-Line Interface (CLI)
-
-Interact via chat in terminal:
-
-```bash
-python -m app.run --thread-id <optional-uuid> --user-id <optional-your_id>
-```
-
-Commands:
-
-- `/memory`: Show long-term memory (profile, projects, instructions) stored.
-- `/exit` or Ctrl-D: Quit.
-
-## Python SDK Usage
+### Python SDK Usage
 
 Install the SDK:
 
