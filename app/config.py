@@ -26,6 +26,7 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENV = os.getenv("PINECONE_ENV", "us-east1-aws")
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+COINMARKETCAP_API_KEY = os.getenv("COINMARKETCAP_API_KEY")
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

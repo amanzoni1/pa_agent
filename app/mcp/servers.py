@@ -1,24 +1,15 @@
 # app/mcp/servers.py
 
+from app.config import COINMARKETCAP_API_KEY
+
 MCP_SERVERS = {
-    "math": {
+    "coinmarketcap": {
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-math"],
-    },
-    "python": {
-        "transport": "stdio",
-        "command": "python",
-        "args": ["-m", "mcp_python_server"],
-    },
-    "currency": {
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-currency"],
-    },
-    "image": {
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-image-gen"],
+        "args": ["-y", "@shinzolabs/coinmarketcap-mcp"],
+        "env": {
+            "COINMARKETCAP_API_KEY": COINMARKETCAP_API_KEY,
+            "SUBSCRIPTION_LEVEL": "Basic",
+        },
     },
 }
