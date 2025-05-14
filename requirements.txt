@@ -9,15 +9,6 @@ langchain-core
 langchain-openai
 langgraph
 
-# Vector store & RAG
-pinecone-client
-langchain-pinecone
-langchain-community
-
-# Text splitting
-langchain-text-splitters
-nltk
-
 # OpenAI API
 openai
 
@@ -27,16 +18,19 @@ psycopg2-binary
 langgraph-checkpoint-redis
 langgraph-checkpoint-postgres
 
+# Vector store & RAG
+pinecone-client
+langchain-pinecone
+langchain-community
+
+# Text splitting
+langchain-text-splitters
+nltk
+
 # HTTP, data validation, finance
 requests
 pydantic
 yfinance
-
-# Optional file-tools / OCR / PDF tables
-pandas
-pillow
-pytesseract
-tabula-py
 
 # Document & NLP support
 unstructured
@@ -47,3 +41,12 @@ pdfminer.six
 python-docx
 beautifulsoup4
 wikipedia
+
+# Optional file-tools / OCR / PDF tables
+pandas
+pillow
+pytesseract
+tabula-py
+
+# MCP
+langchain-mcp-adapters
