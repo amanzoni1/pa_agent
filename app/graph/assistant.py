@@ -83,7 +83,6 @@ def assistant_node(
     # Invoke the Agent with the system message and recent messages
     ai_msg = assistant.invoke(system_messages + state["messages"])
 
-    # print("TOOL CALLS :", ai_msg.tool_calls)
     msg = ai_msg.model_dump(mode="json")
 
     # for m in state["messages"]:

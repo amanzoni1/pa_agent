@@ -2,7 +2,7 @@
 
 import logging
 import asyncio
-from typing import Dict, List, Optional, Callable, Any, Awaitable
+from typing import Dict, List, Optional
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_core.tools import StructuredTool, Tool
 from app.mcp.servers import MCP_SERVERS
@@ -58,7 +58,7 @@ class MCPManager:
             raw_tools = self.client.get_tools()
 
             # Convert tools to ensure they have both sync and async implementations
-            self._tools = self._prepare_tools(raw_tools)
+            self._tools = self.prepare_tools(raw_tools)
 
             logger.info(
                 f"Connected successfully, loaded {len(self._tools)} tools: {[t.name for t in self._tools]}"
@@ -76,7 +76,43 @@ class MCPManager:
                 self._tools = []
             raise
 
-    def _prepare_tools(self, raw_tools: List[Tool]) -> List[Tool]:
+    async def disconnect(self) -> None:
+        """Gracefully disconnect from all MCP servers."""
+        if not self.client:
+            logger.info("No MCP client to disconnect")
+            return
+
+        logger.info("Disconnecting from MCP servers...")
+        client = self.client
+        self.client = None  # Clear reference first
+        self._tools = []
+
+        try:
+            await client.__aexit__(None, None, None)
+            logger.info("Successfully disconnected from MCP servers")
+        except BaseExceptionGroup as bg:
+            # This is expected for stdio clients sometimes
+            logger.warning(f"Non-fatal errors during MCP disconnect: {bg}")
+        except Exception as e:
+            logger.error(f"Error during MCP disconnect: {e}")
+
+    def get_tools(self) -> List[Tool]:
+        """Retrieve all available tools from connected MCP servers."""
+        if not self.client:
+            logger.warning("No MCP client connected")
+            return []
+
+        if not self._tools:
+            try:
+                raw_tools = self.client.get_tools()
+                self._tools = self.prepare_tools(raw_tools)
+            except Exception as e:
+                logger.error(f"Error getting tools: {e}")
+                return []
+
+        return self._tools
+
+    def prepare_tools(self, raw_tools: List[Tool]) -> List[Tool]:
         """
         Adapt MCP tools to work with LangGraph by ensuring the async tools are properly wrapped.
         """
@@ -156,42 +192,6 @@ class MCPManager:
             prepared_tools.append(tool)
 
         return prepared_tools
-
-    async def disconnect(self) -> None:
-        """Gracefully disconnect from all MCP servers."""
-        if not self.client:
-            logger.info("No MCP client to disconnect")
-            return
-
-        logger.info("Disconnecting from MCP servers...")
-        client = self.client
-        self.client = None  # Clear reference first
-        self._tools = []
-
-        try:
-            await client.__aexit__(None, None, None)
-            logger.info("Successfully disconnected from MCP servers")
-        except BaseExceptionGroup as bg:
-            # This is expected for stdio clients sometimes
-            logger.warning(f"Non-fatal errors during MCP disconnect: {bg}")
-        except Exception as e:
-            logger.error(f"Error during MCP disconnect: {e}")
-
-    def get_tools(self) -> List[Tool]:
-        """Retrieve all available tools from connected MCP servers."""
-        if not self.client:
-            logger.warning("No MCP client connected")
-            return []
-
-        if not self._tools:
-            try:
-                raw_tools = self.client.get_tools()
-                self._tools = self._prepare_tools(raw_tools)
-            except Exception as e:
-                logger.error(f"Error getting tools: {e}")
-                return []
-
-        return self._tools
 
 
 # Global singleton instance
