@@ -19,10 +19,12 @@ from app.schemas.project_schema import UpdateProjectMemory
 from app.graph.prompts import SYSTEM_PROMPT
 from app.graph.memory import MEMORY
 from app.tools import TOOLS
+from app.mcp import MCP
 from app.rag import RAG
 
 
 model = get_llm()
+
 
 # Main Agent node
 def assistant_node(
@@ -34,7 +36,7 @@ def assistant_node(
     1) Gather long-term profile from store
     2) Issue the SYSTEM_PROMPT + history to the LLM
     3) Bind the three memory tools, disallow parallel calls
-    4) Return the AI’s reply (which may include exactly one tool_call)
+    4) Return the AI's reply (which may include exactly one tool_call)
     """
     uid = config["configurable"]["user_id"]
 
@@ -70,6 +72,7 @@ def assistant_node(
         [
             *RAG,
             *TOOLS,
+            *MCP,
             UpdateProfileMemory,
             UpdateProjectMemory,
             UpdateInstructionMemory,
@@ -82,6 +85,9 @@ def assistant_node(
 
     # print("TOOL CALLS :", ai_msg.tool_calls)
     msg = ai_msg.model_dump(mode="json")
+
+    # for m in state["messages"]:
+    #     m.pretty_print()
 
     return {"messages": [msg]}
 
@@ -97,7 +103,7 @@ def route_tools(state, *_):
         return END
 
     name = calls[0]["name"]
-    if name in [t.name for t in RAG + TOOLS]:
+    if name in [t.name for t in RAG + TOOLS + MCP]:
         return name
     if name == "UpdateProfileMemory":
         return "update_user_profile"
@@ -122,6 +128,9 @@ for tool_fn in RAG:
 for tool_fn in TOOLS:
     node_name = tool_fn.name
     builder.add_node(node_name, ToolNode([tool_fn]))
+for tool_fn in MCP:
+    node_name = tool_fn.name
+    builder.add_node(node_name, ToolNode([tool_fn]))
 
 # Memory update nodes
 for tool_fn in MEMORY:
@@ -136,6 +145,7 @@ builder.add_conditional_edges("assistant", route_tools)
 for node_name in [
     *[t.name for t in RAG],
     *[t.name for t in TOOLS],
+    *[t.name for t in MCP],
     "update_user_profile",
     "update_instructions",
     "update_projects",

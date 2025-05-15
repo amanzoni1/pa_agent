@@ -9,12 +9,8 @@ import time
 from langchain_core.messages import HumanMessage
 from langgraph.store.memory import InMemoryStore
 from app.graph.assistant import GRAPH
-from app.mcp import cleanup_mcp, initialize_app_mcp
+from app.mcp import cleanup_mcp
 
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = typer.Typer(help="🗣️  Chat CLI for your personal assistant with long-term memory")
 
@@ -25,13 +21,46 @@ def _shutdown(signal_name: str = None):
         f"\nReceived {signal_name or 'exit'}, cleaning up MCP…", fg=typer.colors.YELLOW
     )
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(cleanup_mcp())
-        loop.close()
+        # Check if we're already in an event loop
+        try:
+            loop = asyncio.get_event_loop()
+            is_running = loop.is_running()
+        except RuntimeError:
+            # No event loop in this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            is_running = False
+
+        # Different handling based on whether a loop is already running
+        if is_running:
+            # If we're in a running event loop, we need to use a different approach
+            typer.secho("Using existing event loop for cleanup", fg=typer.colors.YELLOW)
+            # Create a Future that we'll use to know when cleanup is done
+            cleanup_done = loop.create_future()
+
+            # Schedule the cleanup task
+            async def do_cleanup():
+                try:
+                    await cleanup_mcp()
+                    cleanup_done.set_result(None)
+                except Exception as e:
+                    cleanup_done.set_exception(e)
+
+            asyncio.create_task(do_cleanup())
+
+            # We can't wait for it in this thread, so we'll just continue
+            # This is not ideal but better than blocking forever
+            typer.secho("Cleanup scheduled, exiting now", fg=typer.colors.YELLOW)
+        else:
+            # If no loop is running, we can run it to completion
+            typer.secho("Running cleanup in new event loop", fg=typer.colors.YELLOW)
+            loop.run_until_complete(cleanup_mcp())
+            loop.close()
+            typer.secho("Cleanup completed", fg=typer.colors.GREEN)
     except Exception as e:
         typer.secho(f"Error during MCP cleanup: {e}", fg=typer.colors.RED)
-    sys.exit(0)
+    finally:
+        sys.exit(0)
 
 
 # register both Ctrl-C and 'kill' termination
@@ -62,27 +91,11 @@ def chat(
     if thread_id is None:
         thread_id = str(uuid.uuid4())
 
+
     typer.secho(
         f"\n[Memory namespace] user_id={user_id!r}  thread_id={thread_id!r}\n",
         fg=typer.colors.GREEN,
     )
-
-    # Initialize MCP before starting the chat
-    try:
-        typer.secho(f"Initializing MCP tools...", fg=typer.colors.YELLOW)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        tools = loop.run_until_complete(initialize_app_mcp())
-        loop.close()
-        typer.secho(f"Loaded {len(tools)} MCP tools", fg=typer.colors.GREEN)
-
-        # Ensure MCP tools are properly loaded in the graph
-        # from app.graph.assistant import GRAPH
-
-        # Wait a moment to ensure tools are properly registered
-        time.sleep(1)
-    except Exception as e:
-        typer.secho(f"Error initializing MCP tools: {e}", fg=typer.colors.RED)
 
     # 1) Chat history and running summary
     history: list[HumanMessage] = []
@@ -99,12 +112,13 @@ def chat(
             try:
                 text = typer.prompt("You")
             except (EOFError, KeyboardInterrupt):
-                typer.secho("\nGoodbye!", fg=typer.colors.RED)
-                raise typer.Exit()
+                _shutdown("Ctrl+D or Ctrl+C")
+                return
 
             lower = text.strip().lower()
             if lower in ("/exit", "/quit"):
-                raise typer.Exit()
+                _shutdown("exit command")
+                return
 
             if lower == "/memory":
                 # PROFILE
@@ -163,9 +177,11 @@ def chat(
             history.append(ai)
 
     except (EOFError, KeyboardInterrupt):
-        pass
+        _shutdown("Ctrl+D or Ctrl+C")
     finally:
-        _shutdown()
+        # Make sure we call _shutdown only once by removing it from here
+        # (it will be called via the exception handlers above)
+        pass
 
 
 if __name__ == "__main__":
