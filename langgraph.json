@@ -1,12 +1,18 @@
 {
-    "dockerfile_lines": [
-        "RUN pip install nltk certifi",
-        "COPY scripts/bootstrap_nltk.py /scripts/bootstrap_nltk.py",
-        "RUN python /scripts/bootstrap_nltk.py"
-    ],
-    "graphs": {
-      "my-assistant": "./app/graph/assistant.py:GRAPH"
-    },
-    "python_version": "3.11",
-    "dependencies": ["."]
-  }
+  "dockerfile_lines": [
+    "RUN apt-get update && apt-get install -y curl gnupg",
+    "RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash -",
+    "RUN apt-get install -y nodejs",
+
+    "RUN npm install -g @shinzolabs/coinmarketcap-mcp",
+
+    "RUN pip install nltk certifi",
+    "COPY scripts/bootstrap_nltk.py /scripts/bootstrap_nltk.py",
+    "RUN python /scripts/bootstrap_nltk.py"
+  ],
+  "graphs": {
+    "my-assistant": "./app/graph/assistant.py:GRAPH"
+  },
+  "python_version": "3.11",
+  "dependencies": ["."]
+}

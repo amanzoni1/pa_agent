@@ -1,6 +1,6 @@
 # Personal Assistant Agent with LangGraph
 
-A powerful conversational agent with retrieval-augmented generation, long- and short-term memory, and tool integrations—powered by LangGraph, LangChain, Redis, PostgreSQL, and Pinecone.
+A powerful conversational agent with retrieval-augmented generation, MCP server, long- and short-term memory, and tool integrations—powered by LangGraph, LangChain, Redis, PostgreSQL, and Pinecone.
 
 ---
 
@@ -12,6 +12,8 @@ A powerful conversational agent with retrieval-augmented generation, long- and s
 - **Retrieval-Augmented Generation**
   - Ingest & query PDF, Markdown, HTML, CSV & DOCX into Pinecone
   - `index_docs(name, path_or_url)` & `query_index(name, question, k)` tools
+- **MCP Server**
+  - 25+ CoinMarketCap endpoints exposed
 - **Long-Term Memory**
   - Profile, projects & instructions stored in PostgreSQL, namespaced by user
 - **Short-Term Memory**
@@ -37,6 +39,7 @@ personal_assistant/
 │   │   └── memory/      # summarization, schemas
 │   ├── tools/           # external tool fns
 │   ├── rag/             # RAG loaders & indexers
+│   ├── mcp/             # MCP server logic
 │   └── schemas/
 ├── requirements.txt
 ├── docker-compose.yml
@@ -49,7 +52,7 @@ personal_assistant/
 - Python 3.11+
 - Docker & Docker Compose (for containerized deployment)
 - Redis & PostgreSQL (local or via Docker)
-- OpenAI, Pinecone & Tavily API keys
+- OpenAI, Pinecone, Tavily & CoinMarketCap API keys
 
 ## Getting Started
 
@@ -83,6 +86,7 @@ personal_assistant/
    POSTGRES_URI=postgresql://postgres:postgres@localhost:5432/personal_assistant?sslmode=disable
    PINECONE_API_KEY=your_pinecone_key
    TAVILY_API_KEY=your_tavily_key
+   COINMARKETCAP_API_KEY=your_cmc_key
    ```
 
 5. Ensure Redis and Postgres are running locally.
@@ -98,6 +102,7 @@ python -m app.run --thread-id <optional-uuid> --user-id <optional-your_id>
 Commands:
 
 - `/memory`: Show long-term memory (profile, projects, instructions) stored.
+- `/mcp`: get all the tools available from the MCP server.
 - `/exit` or Ctrl-D: Quit.
 
 ## Docker Compose Deployment
