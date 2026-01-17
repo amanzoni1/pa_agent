@@ -1,0 +1,9 @@
+deepagents
+langgraph
+langchain
+langchain-fireworks
+langchain-openai
+redis
+tavily-python
+python-dotenv
+tavily-python
