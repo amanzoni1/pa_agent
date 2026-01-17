@@ -1,0 +1,34 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments & env files
+.venv/
+venv/
+.env
+.env.*
+venv*
+
+# Poetry lock (if you prefer rebuilding)
+poetry.lock
+
+# Logs & coverage
+*.log
+logs/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# Config secrets
+config/credentials.yaml
+
+# Docker / compose overrides
+docker-compose.override.yml
+
+
+# Test reports, caches
+.cache/
