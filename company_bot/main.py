@@ -1,4 +1,3 @@
-import sys
 import asyncio
 from dotenv import load_dotenv
 from rich.console import Console
@@ -6,105 +5,45 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.live import Live
 from rich.spinner import Spinner
-from rich.text import Text
 
-# Import langchain/deepagents types for type checking
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+# Imports for Type Checking
+from langchain_core.messages import AIMessage, ToolMessage
 
-# Your existing imports
+# Your Imports
 from app.agent.graph import build_agent
 
-# 1. Load Environment
+# 1. Setup
 load_dotenv(".env")
 console = Console()
 
-# 2. The Display Manager (Handles the UI logic)
-class AgentDisplay:
-    def __init__(self):
-        self.printed_count = 0
-        self.spinner = Spinner("dots", text="Thinking...", style="yellow")
-
-    def update_status(self, text, style="yellow"):
-        self.spinner = Spinner("dots", text=text, style=style)
-
-    def print_message(self, msg):
-        """Render a message based on its type."""
-
-        # --- CASE A: AI Message (The Bot Speaking or Using Tools) ---
-        if isinstance(msg, AIMessage):
-            # 1. Print Text Content (The Answer)
-            content = msg.content
-            if isinstance(content, list): # Handle complex content blocks
-                content = "".join([c["text"] for c in content if "text" in c])
-
-            if content and content.strip():
-                console.print(Panel(Markdown(content), title="[bold green]Company Bot[/]", border_style="green"))
-
-            # 2. Print Tool Calls (The Thinking)
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    name = tc.get("name")
-                    args = tc.get("args", {})
-
-                    # CUSTOM VISUALS FOR YOUR TOOLS
-                    if name == "internet_search":
-                        query = args.get("query", "...")
-                        console.print(f"  [bold cyan]🌍 Searching Web:[/bold cyan] [dim]{query}[/dim]")
-                        self.update_status("Searching external sources...", style="cyan")
-
-                    elif name == "read_file":
-                        path = args.get("file_path", "...")
-                        console.print(f"  [bold magenta]🧠 Accessing Memory:[/bold magenta] [dim]{path}[/dim]")
-                        self.update_status("Reading long-term memory...", style="magenta")
-
-                    elif name == "write_file":
-                        path = args.get("file_path", "...")
-                        console.print(f"  [bold yellow]💾 Saving Memory:[/bold yellow] [dim]{path}[/dim]")
-                        self.update_status("Updating user profile...", style="yellow")
-
-                    else:
-                        console.print(f"  [bold blue]🔧 Tool Call:[/bold blue] {name}")
-
-        # --- CASE B: Tool Result (The Output) ---
-        elif isinstance(msg, ToolMessage):
-            name = getattr(msg, "name", "unknown")
-            # Keep tool outputs concise to avoid clutter
-            if name == "internet_search":
-                 console.print(f"  [green]✓ Found search results[/green]")
-            elif "file" in name:
-                 console.print(f"  [green]✓ Memory updated[/green]")
-            else:
-                 console.print(f"  [green]✓ Tool finished[/green]")
-
-# 3. The Async Chat Loop
 async def main():
     agent = build_agent(provider="openai")
 
-    # Guest Session
-    thread_id = "guest_session_rich_ui"
+    # Dashboard Session
+    thread_id = "dashboard_session_final_v2"
     config = {"configurable": {"thread_id": thread_id}}
 
-    # Welcome Header
-    console.print(Panel.fit(
-        "[bold white]Company Support Bot[/bold white]",
-        style="blue"
-    ))
-    console.print("[dim]Type 'q' to quit.[/dim]\n")
+    # Header
+    console.print(Panel.fit("[bold white]Company Bot CLI[/]", style="blue"))
 
     while True:
         try:
-            # Standard input (rich.console.input allows colors in prompt)
-            user_input = console.input("[bold blue]You:[/bold blue] ")
-            if user_input.lower() in ['q', 'quit']:
-                console.print("[yellow]Goodbye![/yellow]")
-                break
+            # --- INPUT ---
+            user_input = console.input("\n[bold green]User > [/]")
+            if user_input.lower() in ['q', 'quit']: break
 
-            display = AgentDisplay()
+            # --- PRE-CALCULATE OFFSET ---
+            initial_state = await agent.aget_state(config)
+            start_len = len(initial_state.values.get("messages", []))
 
-            # Live Spinner + Async Streaming
-            with Live(display.spinner, console=console, refresh_per_second=10, transient=True) as live:
+            # --- STREAMING EXECUTION ---
+            current_len = start_len
 
-                # We use stream_mode="values" to get the full list of messages as they grow
+            # Simple spinner
+            spinner = Spinner("dots", text="[dim]Agent is thinking...[/dim]", style="yellow")
+
+            with Live(spinner, console=console, refresh_per_second=10, transient=True) as live:
+
                 async for chunk in agent.astream(
                     {"messages": [("user", user_input)]},
                     config=config,
@@ -113,19 +52,67 @@ async def main():
                     if "messages" in chunk:
                         messages = chunk["messages"]
 
-                        # Only print the NEW messages we haven't seen yet
-                        if len(messages) > display.printed_count:
-                            live.stop() # Pause spinner to print clearly
+                        # Only process NEW messages
+                        if len(messages) > current_len:
+                            live.stop() # Pause spinner
 
-                            for msg in messages[display.printed_count:]:
-                                display.print_message(msg)
+                            for msg in messages[current_len:]:
 
-                            display.printed_count = len(messages)
+                                # 1. Visualize Tool Calls (Reasoning)
+                                if isinstance(msg, AIMessage) and msg.tool_calls:
 
+                                    # Print "Chain of Thought" text if present
+                                    if msg.content:
+                                        console.print(f"[dim italic]{msg.content}[/dim italic]")
+
+                                    for tc in msg.tool_calls:
+                                        name = tc['name']
+                                        args = tc['args']
+
+                                        # --- COLOR LOGIC ---
+
+                                        # GROUP A: Memory (Magenta)
+                                        if name in ["read_file", "write_file", "edit_file"]:
+                                            action = "Reading Memory" if name == "read_file" else "Updating Memory"
+                                            path = args.get('file_path', '...')
+                                            console.print(f"[bold magenta]🧠 {action}:[/bold magenta] [dim]{path}[/dim]")
+
+                                        # GROUP B: General Tools (Cyan)
+                                        else:
+                                            # Try to find a readable argument (query, url, etc.)
+                                            details = args.get('query') or str(args)[:60]
+                                            console.print(f"[bold yellow]🛠️  Tool Call ({name}):[/bold yellow] [dim]{details}[/dim]")
+
+                                # 2. Visualize Tool Outputs (Result)
+                                elif isinstance(msg, ToolMessage):
+                                    status = "Error" if "error" in msg.content.lower() else "Success"
+
+                                    # Match color to the tool type
+                                    # If name implies memory, use magenta, else yellow
+                                    if "file" in msg.name:
+                                        color = "magenta"
+                                    else:
+                                        color = "bold yellow"
+
+                                    console.print(f"   [dim {color}]↳ {status}: {msg.name}[/dim {color}]")
+
+                                # 3. Visualize Final Answer
+                                elif isinstance(msg, AIMessage) and not msg.tool_calls:
+                                    console.print(Panel(Markdown(msg.content), title="Bot", border_style="green"))
+
+                                    # Detailed Token Metrics
+                                    usage = msg.response_metadata.get("token_usage")
+                                    if usage:
+                                        total = usage.get('total_tokens')
+                                        prompt = usage.get('prompt_tokens')
+                                        completion = usage.get('completion_tokens')
+                                        console.print(f"[dim right]Tokens: {total} (In: {prompt}, Out: {completion})[/dim right]")
+
+                            current_len = len(messages)
                             live.start() # Resume spinner
-                            live.update(display.spinner)
 
         except KeyboardInterrupt:
+            console.print("\n[yellow]Goodbye![/yellow]")
             break
         except Exception as e:
             console.print(f"[bold red]Error:[/bold red] {e}")
