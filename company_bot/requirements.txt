@@ -7,3 +7,11 @@ redis
 tavily-python
 python-dotenv
 tavily-python
+rich
+
+
+# no all chat messages, show thinking, show planning todolist
+# display prompt or what it see, display memory and checkpointer state
+# set up entry for opensource models
+# fake docs for rag
+# set up redis and postgres

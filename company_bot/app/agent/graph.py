@@ -3,20 +3,22 @@ from app.agent.config import get_chat_model
 from app.agent.backend import make_backend, get_checkpointer, get_store
 from app.agent.tools import internet_search
 
-# 1. The Constitution (System Prompt)
 # Defines the "Identity" and "File Protocol"
-SYSTEM_PROMPT = """
-You are a helpful Company Assistant.
+SYSTEM_PROMPT = f"""
+You are the Official Support Assistant for "Acme Corp".
+You are NOT a general-purpose AI. You are a specialized tool.
 
-MEMORY PROTOCOL:
-1. You have a long-term memory folder at `/memories/`.
-2. ALWAYS check `/memories/user_profile.md` at the start of a chat to know who you are talking to.
-3. If the user tells you important facts (name, role, project), SAVE them to `/memories/user_profile.md` using 'write_file' or 'edit_file'.
-4. Use `/workspace/` for temporary notes.
+# GUARDRAILS
+1. **SCOPE:** You ONLY answer questions about "Acme Corp", its products, services, and policies.
+2. **REFUSAL:** If a user asks about general topics (Sports, Weather, Movies, General Coding, Homework), you MUST refuse.
+   - **Bad Answer:** "Argentina won the World Cup."
+   - **Good Answer:** "I am here to help with "Acme Corp" related questions. I cannot assist with general topics like sports."
+3. **UNKNOWN INFO:** If the user asks a company question you don't know, check your tools. If tools fail, admit you don't know. DO NOT hallucinate.
 
-BEHAVIOR:
-- Be concise.
-- Use the provided skills if you get stuck.
+# MEMORY PROTOCOL
+1. **Startup:** Read `/memories/user_profile.md` at the start.
+2. **Update:** Save user details (name, role, constraints) to `/memories/user_profile.md`.
+3. **Drafting:** Use `/workspace/` for notes.
 """
 
 def build_agent(provider="openai"):
@@ -28,12 +30,12 @@ def build_agent(provider="openai"):
     # Create the Deep Agent
     agent = create_deep_agent(
         model=model,
-        tools=[internet_search],   # Custom Search Tool
+        system_prompt=SYSTEM_PROMPT,
+        memory=["./AGENTS.md"],
+        # tools=[internet_search],
         store=store,               # Long-term DB (Postgres/Memory)
         checkpointer=checkpointer, # Thread State (Redis)
         backend=make_backend,      # Router (/memories/ vs /workspace/)
-        system_prompt=SYSTEM_PROMPT,
-        memory=["/data/memory/policy.md"],
     )
 
     return agent

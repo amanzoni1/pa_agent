@@ -1,4 +1,3 @@
-# agents/deep_agent/config.py
 import os
 from langchain.chat_models import init_chat_model
 
@@ -7,7 +6,7 @@ MODELS = {
     "openai": "openai:gpt-4o",
     "anthropic": "anthropic:claude-3-5-sonnet-latest",
     "fireworks": "fireworks:accounts/fireworks/models/llama-v3p3-70b-instruct",
-    "deepseek": "fireworks:accounts/fireworks/models/deepseek-r1" # Reasoning model
+    "deepseek": "fireworks:accounts/fireworks/models/deepseek-r1"
 }
 
 def get_chat_model(provider="openai"):
