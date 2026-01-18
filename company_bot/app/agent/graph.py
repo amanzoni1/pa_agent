@@ -21,7 +21,7 @@ You are NOT a general-purpose AI. You are a specialized tool.
 3. **Drafting:** Use `/workspace/` for notes.
 """
 
-def build_agent(provider="openai"):
+def build_agent(provider="fast-20b"):
     # Initialize components
     model = get_chat_model(provider)
     store = get_store()
