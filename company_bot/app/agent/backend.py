@@ -1,9 +1,7 @@
 import os
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
-# In production, swap InMemoryStore with PostgresStore
-# from langgraph.store.postgres import PostgresStore
-
+from deepagents.backends.filesystem import FilesystemBackend
 from deepagents.backends import CompositeBackend, StateBackend, StoreBackend
 
 def get_checkpointer():
@@ -19,12 +17,17 @@ def get_store():
 def make_backend(runtime):
     """
     The Router:
-    - /memories/ -> Goes to Long-term Store
+    - /memories/ -> Read/Write access for the agent's long-term memory
+    - /system/ ->  Read/Write access for the AGENTS and skills files
     - Everything else -> Goes to Ephemeral State
     """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    assets_path = os.path.join(base_dir, "assets")
+
     return CompositeBackend(
         default=StateBackend(runtime),
         routes={
-            "/memories/": StoreBackend(runtime)
+            "/memories/": StoreBackend(runtime),
+            "/system/": FilesystemBackend(root_dir=assets_path, virtual_mode=True),
         }
     )
