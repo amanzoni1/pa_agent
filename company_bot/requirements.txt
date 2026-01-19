@@ -9,7 +9,3 @@ tavily-python
 python-dotenv
 tavily-python
 rich
-
-
-# fake docs for rag
-# set up redis and postgres

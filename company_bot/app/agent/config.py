@@ -26,7 +26,7 @@ def validate_key(provider):
         print(f"   Please add it to your .env file to use provider: {provider}")
         sys.exit(1)
 
-def get_chat_model(model_id="openai"):
+def get_chat_model(model_id, **kwargs):
     """
     Returns the configured model based on the CLI string.
     """
@@ -41,7 +41,7 @@ def get_chat_model(model_id="openai"):
     print(f"--- 🧠 Loading Brain: {model_name} ({provider}) ---")
 
     try:
-        return init_chat_model(model=model_name, model_provider=provider)
+        return init_chat_model(model=model_name, model_provider=provider, **kwargs)
     except Exception as e:
         print(f"❌ Error initializing model: {e}")
         sys.exit(1)
