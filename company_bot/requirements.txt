@@ -4,8 +4,9 @@ langchain
 langchain-huggingface
 langchain-fireworks
 langchain-openai
-redis
-tavily-python
+langchain-chroma
+langchain-text-splitters
+sentence-transformers
+chromadb
 python-dotenv
-tavily-python
 rich

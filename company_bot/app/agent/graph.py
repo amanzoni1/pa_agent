@@ -1,24 +1,33 @@
+import os
+import datetime
 from deepagents import create_deep_agent
 from app.agent.config import get_chat_model
 from app.agent.backend import make_backend, get_checkpointer, get_store
-from app.agent.tools import internet_search
+from app.agent.tools import lookup_company_policy
 
-# Defines the "Identity" and "File Protocol"
+
+# DYNAMIC SYSTEM PROMPT
 SYSTEM_PROMPT = f"""
-You are the Official Support Assistant for "Acme Corp".
-You are NOT a general-purpose AI. You are a specialized tool.
+### RUNTIME CONTEXT
+- **Current Date:** {datetime.datetime.now().strftime("%Y-%m-%d")}
+- **System Status:** ONLINE
 
-# GUARDRAILS
-1. **SCOPE:** You ONLY answer questions about "Acme Corp", its products, services, and policies.
-2. **REFUSAL:** If a user asks about general topics (Sports, Weather, Movies, General Coding, Homework), you MUST refuse.
-   - **Bad Answer:** "Argentina won the World Cup."
-   - **Good Answer:** "I am here to help with "Acme Corp" related questions. I cannot assist with general topics like sports."
-3. **UNKNOWN INFO:** If the user asks a company question you don't know, check your tools. If tools fail, admit you don't know. DO NOT hallucinate.
+### TOOL USAGE PROTOCOL (TECHNICAL)
+You have access to `lookup_company_policy`. You MUST follow these rules:
 
-# MEMORY PROTOCOL
-1. **Startup:** Read `/memories/user_profile.md` at the start.
-2. **Update:** Save user details (name, role, constraints) to `/memories/user_profile.md`.
-3. **Drafting:** Use `/workspace/` for notes.
+1.  **"SEARCH FIRST" RULE:**
+    You have NO internal knowledge of Acme Corp. You ONLY know what is in the database.
+    - If a user asks for a policy, password, or setting: **YOU MUST CALL THE TOOL.**
+    - Do not answer from your own training data.
+
+2.  **QUERY EXPANSION STRATEGY:**
+    Users write lazy queries. You must translate them into "Handbook Language" before calling the tool.
+    - User: "wifi sucks" -> Tool Call: "corporate wireless network troubleshooting"
+    - User: "sick leave" -> Tool Call: "HR employee sick leave policy 2026"
+    - User: "vpn key"    -> Tool Call: "AcmeGuard VPN shared secret key"
+
+3.  **CITATION:**
+    Always mention the source document found by the tool (e.g., "According to 'IT_05.md'...").
 """
 
 def build_agent(provider="fast-20b"):
@@ -32,10 +41,11 @@ def build_agent(provider="fast-20b"):
         model=model,
         system_prompt=SYSTEM_PROMPT,
         memory=["./AGENTS.md"],
-        # tools=[internet_search],
-        store=store,               # Long-term DB (Postgres/Memory)
-        checkpointer=checkpointer, # Thread State (Redis)
-        backend=make_backend,      # Router (/memories/ vs /workspace/)
+        skills=["./skills/"],
+        tools=[lookup_company_policy],
+        store=store,
+        checkpointer=checkpointer,
+        backend=make_backend,
     )
 
     return agent
