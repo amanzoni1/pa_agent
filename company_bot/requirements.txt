@@ -10,3 +10,11 @@ sentence-transformers
 chromadb
 python-dotenv
 rich
+
+
+# indirizzare utilizzo skills per tool func e sistemare prompt
+# guardare anche long term memory, prob need instructions
+# fare fylesistem sicuro aggiustando middleware, guarda main docs e adj prompt
+# adjust AGENTS in prohibited topic and privacy rules
+
+# backend and config easily switchable to prod

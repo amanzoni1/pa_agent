@@ -1,18 +1,20 @@
 # Skill: Corporate Knowledge Retrieval
 
 ## Tool: `lookup_company_policy`
-Use this skill when the user asks about ANY internal company topic (HR, IT, Projects, Pricing).
+Use this skill for ANY inquiry regarding Acme Corp internal documentation.
 
-## Query Strategy (CRITICAL)
-The search engine matches keywords. You must translate user intent into "Handbook Language".
+## Query Strategy: "Handbook Language"
+The database is keyword-sensitive. You must translate user intent into formal search terms before calling the tool.
 
-| User Says | You Search For |
+| User Intent | Expanded Search Query |
 | :--- | :--- |
-| "wifi sucks" | "corporate wireless network troubleshooting" |
-| "I need a break" | "mental health leave policy" |
-| "vpn key" | "AcmeGuard VPN shared secret" |
+| "wifi/internet" | "corporate wireless network configuration and passwords" |
+| "vacation/time off" | "HR employee paid time off and vacation policy" |
+| "vpn access" | "AcmeGuard VPN configuration and shared secret" |
+| "pricing" | "Sales subscription pricing strategy and effective dates" |
 
-## Usage Rules
-1. **Search First:** Never answer policy questions from your own training data. ALWAYS use `lookup_company_policy` first.
-2. **Cite Sources:** If the tool returns a document name (e.g., `HR_01.md`), mention it in your answer.
-3. **Refusal:** If the tool returns "No documents found," apologize and state you cannot find that information. Do NOT make it up.
+## Execution Protocol
+1. **Silent Execution:** Run the tool immediately. Do not announce it.
+2. **Search First:** Never answer from your own training data; always query the database.
+3. **Citation:** Always mention the filename of the document found.
+4. **Failure:** If no results are found, revert to the Refusal Protocol in AGENTS.md.

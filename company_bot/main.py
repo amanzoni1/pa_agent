@@ -12,6 +12,7 @@ from rich.spinner import Spinner
 from langchain_core.messages import AIMessage, ToolMessage
 from app.agent.graph import build_agent
 
+# Suppress noisy logs
 warnings.simplefilter("ignore", ResourceWarning)
 logging.getLogger("aiohttp").setLevel(logging.CRITICAL)
 logging.getLogger("asyncio").setLevel(logging.CRITICAL)
@@ -20,16 +21,34 @@ logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 load_dotenv(".env")
 console = Console()
 
-# argument parser
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run the Company Bot CLI")
     parser.add_argument(
         "--model", "-m",
         type=str,
-        default="fast-20b",
-        help="The model to use (openai, deepseek, qwen-main, qwen-think)"
+        default="openai",
+        help="Model Config: Use a shortcut ('openai', 'fast') OR a prefix ('fw-..., 'oa-..., 'ant-...')"
     )
     return parser.parse_args()
+
+def extract_thinking(msg: AIMessage):
+    """
+    Extracts reasoning/thinking content from various model formats.
+    Returns a tuple of (thought, content).
+    """
+    content = msg.content or ""
+    # Standard reasoning field (Fireworks/DeepSeek)
+    thought = msg.additional_kwargs.get("reasoning_content", "")
+
+    # Tag-based reasoning (Qwen/DeepSeek-R1 Distill style)
+    if not thought and "<think>" in str(content):
+        try:
+            parts = str(content).split("</think>")
+            thought = parts[0].replace("<think>", "").strip()
+            content = parts[1].strip()
+        except:
+            pass
+    return thought, content
 
 async def main():
     args = parse_arguments()
@@ -57,8 +76,6 @@ async def main():
 
             # --- STREAMING EXECUTION ---
             current_len = start_len
-
-            # Simple spinner
             spinner = Spinner("dots", text="[dim]Agent is thinking...[/dim]", style="yellow")
 
             with Live(spinner, console=console, refresh_per_second=10, transient=True) as live:
@@ -71,77 +88,47 @@ async def main():
                     if "messages" in chunk:
                         messages = chunk["messages"]
 
-                        # Only process NEW messages
                         if len(messages) > current_len:
-                            live.stop() # Pause spinner
+                            live.stop()
 
                             for msg in messages[current_len:]:
 
-                                # 1. Visualize Tool Calls (Reasoning)
+                                # 1. Visualize Tool Calls (Reasoning + Action)
                                 if isinstance(msg, AIMessage) and msg.tool_calls:
-
-                                    # Print "Chain of Thought" text if present
-                                    if msg.content:
+                                    thought, _ = extract_thinking(msg)
+                                    if thought:
+                                        console.print(Panel(Markdown(thought), title="[italic dim]Thinking...[/italic dim]", border_style="dim cyan", style="dim"))
+                                    elif msg.content:
                                         console.print(f"[dim italic]{msg.content}[/dim italic]")
 
                                     for tc in msg.tool_calls:
                                         name = tc['name']
-                                        args = tc['args']
+                                        t_args = tc['args']
 
-                                        # --- COLOR LOGIC ---
-
-                                        # GROUP A: Memory (Magenta)
                                         if name in ["read_file", "write_file", "edit_file"]:
                                             action = "Reading Memory" if name == "read_file" else "Updating Memory"
-                                            path = args.get('file_path', '...')
+                                            path = t_args.get('file_path', '...')
                                             console.print(f"[bold magenta]🧠 {action}:[/bold magenta] [dim]{path}[/dim]")
-
-                                        # GROUP B: General Tools (Yellow/Cyan)
                                         else:
-                                            # Try to find a readable argument (query, url, etc.)
-                                            details = args.get('query') or str(args)[:60]
+                                            details = t_args.get('query') or str(t_args)[:60]
                                             console.print(f"[bold yellow]🛠️  Tool Call ({name}):[/bold yellow] [dim]{details}[/dim]")
 
-                                # 2. Visualize Tool Outputs (Result)
+                                # 2. Visualize Tool Outputs
                                 elif isinstance(msg, ToolMessage):
                                     status = "Error" if "error" in msg.content.lower() else "Success"
-
-                                    # Match color to the tool type
-                                    # If name implies memory, use magenta, else yellow
-                                    if "file" in msg.name:
-                                        color = "magenta"
-                                    else:
-                                        color = "bold yellow"
-
+                                    color = "magenta" if "file" in msg.name else "bold yellow"
                                     console.print(f"   [dim {color}]↳ {status}: {msg.name}[/dim {color}]")
 
-                                # 3. Visualize Final Answer (With Thinking Parser)
+                                # 3. Visualize Final Answer
                                 elif isinstance(msg, AIMessage) and not msg.tool_calls:
-                                    content = msg.content
+                                    thought, answer = extract_thinking(msg)
 
-                                    # Check for DeepSeek/Qwen Thinking Tags
-                                    if "<think>" in content and "</think>" in content:
-                                        try:
-                                            # Split: [Thinking, Answer]
-                                            parts = content.split("</think>")
-                                            thought = parts[0].replace("<think>", "").strip()
-                                            answer = parts[1].strip()
+                                    if thought:
+                                        console.print(Panel(Markdown(thought), title="[italic dim]Brain[/italic dim]", border_style="dim white", style="dim"))
 
-                                            # Print the "Brain" panel (Dimmed)
-                                            if thought:
-                                                console.print(Panel(Markdown(thought), title="[italic dim]Brain[/italic dim]", border_style="dim white", style="dim"))
+                                    if answer:
+                                        console.print(Panel(Markdown(answer), title="Bot", border_style="green"))
 
-                                            # Print the "Mouth" panel (Green)
-                                            if answer:
-                                                console.print(Panel(Markdown(answer), title="Bot", border_style="green"))
-                                        except:
-                                            # Fallback if split fails
-                                            console.print(Panel(Markdown(content), title="Bot", border_style="green"))
-                                    else:
-                                        # Normal Answer
-                                        console.print(Panel(Markdown(content), title="Bot", border_style="green"))
-
-                                    # Detailed Token Metrics
                                     usage = msg.response_metadata.get("token_usage")
                                     if usage:
                                         total = usage.get('total_tokens')
@@ -150,7 +137,7 @@ async def main():
                                         console.print(f"[dim right]Tokens: {total} (In: {prompt}, Out: {completion})[/dim right]")
 
                             current_len = len(messages)
-                            live.start() # Resume spinner
+                            live.start()
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Goodbye![/yellow]")
