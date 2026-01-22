@@ -69,6 +69,7 @@ This project is inside a larger personal agents repo: https://github.com/amanzon
    You need at least one provider.
 
 3. **(Optional) Ingest Knowledge Base**
+   
     The repository includes a pre-built Chroma vector DB in `app/vector_db/` with the 7 sample docs already indexed — you can run the bot immediately.
     Run ingestion only if you add, remove, or modify files in `app/docs/`:
 
@@ -78,7 +79,7 @@ This project is inside a larger personal agents repo: https://github.com/amanzon
 
    This will re-process `app/docs/*.md` and regenerate the vector DB.
 
-4. **Run the Bot**
+5. **Run the Bot**
    ```bash
    python main.py --model openai        # or 'fast', 'claude', 'fw-...', etc.
    ```
